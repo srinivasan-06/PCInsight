@@ -55,6 +55,9 @@ QPushButton#Ghost {{ background: transparent; color: {t['accent']}; border: 1px 
     border-radius: 6px; padding: 4px 12px; }}
 QPushButton#Ghost:hover {{ background: {t['badge_bg']}; }}
 QPushButton#Ghost:disabled {{ color: {t['muted']}; }}
+QLineEdit#Search {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']};
+    border-radius: 6px; padding: 7px 10px; }}
+QLineEdit#Search:focus {{ border: 1px solid {t['accent']}; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; }}
 QScrollBar::handle:vertical {{ background: {t['border']}; border-radius: 5px; min-height: 30px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}

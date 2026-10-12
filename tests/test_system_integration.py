@@ -57,3 +57,38 @@ def test_bios_real_data(hardware):
 
 def test_chipset_reported_as_unsupported(hardware):
     assert hardware["motherboard"].get("chipset").status is Status.UNSUPPORTED
+
+
+# ---- Module 4 real-machine checks ----
+from pcinsight.core.gpu_info import collect_gpus  # noqa: E402
+from pcinsight.core.memory_info import collect_memory  # noqa: E402
+from pcinsight.core.storage_info import collect_storage  # noqa: E402
+
+
+def _show(secs):
+    for s in secs:
+        print(f"\n== {s.title} ==")
+        for f in s.fields:
+            print(f"{f.label:36} {f.status.value:12} {f.value or f.note}")
+
+
+def test_memory_real_data():
+    secs = collect_memory()
+    _show(secs)
+    m = secs[0]
+    assert m.get("total_physical").status is Status.OK and m.get("available").status is Status.OK
+
+
+def test_gpu_real_data():
+    secs = collect_gpus()
+    _show(secs)
+    assert secs[0].key.startswith("gpu_") and secs[0].get("gpu_name").status is Status.OK
+
+
+def test_storage_real_data():
+    secs = collect_storage()
+    _show(secs)
+    disks = [s for s in secs if s.key.startswith("storage_disk_")]
+    assert disks and disks[0].get("capacity").status is Status.OK
+    vols = next(s for s in secs if s.key == "volumes")
+    assert any(f.status is Status.OK for f in vols.fields)

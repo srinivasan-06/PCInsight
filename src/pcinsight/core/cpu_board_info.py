@@ -7,13 +7,12 @@ so the field is reported as unsupported rather than guessed.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime
 from typing import Callable
 
-from .common import (CollectionError, Reading, make_field, placeholder_note, query_cim,
-                     read_registry_value, reg_str)
+from .common import (CollectionError, Reading, make_field, normalize_date as normalize_bios_date,
+                     placeholder_note, query_cim, read_registry_value, reg_str)
 from .models import InfoField, InfoSection, Status
 
 CPU_KEY = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
@@ -75,30 +74,6 @@ def _vendor(value: str) -> tuple[str, str]:
     if value in VENDORS:
         return VENDORS[value], ""
     return value, ("Vendor ID shown as reported by the processor." if value else "")
-
-
-def normalize_bios_date(raw: str) -> tuple[str, str]:
-    """Return (YYYY-MM-DD, note). Unrecognised formats are returned untouched with a note."""
-    raw = raw.strip()
-    if not raw:
-        return "", ""
-    m = re.match(r"^/Date\((-?\d+)", raw)
-    if m:
-        d = datetime.fromtimestamp(int(m.group(1)) / 1000, tz=timezone.utc).date()
-        return d.isoformat(), ""
-    for fmt, note in (("%m/%d/%Y", ""), ("%Y-%m-%d", ""),
-                      ("%m/%d/%y", "Firmware reported a two-digit year; century assumed.")):
-        try:
-            return datetime.strptime(raw, fmt).date().isoformat(), note
-        except ValueError:
-            pass
-    m = re.match(r"^(\d{4})-?(\d{2})-?(\d{2})", raw)
-    if m:
-        try:
-            return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat(), ""
-        except ValueError:
-            pass
-    return raw, "Date format not recognised; shown as reported."
 
 
 # --- collectors ---------------------------------------------------------------------

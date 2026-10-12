@@ -16,3 +16,10 @@ Launch; click all 7 items; resize/maximize; toggle theme; confirm no console err
 - tests/test_scan.py: collector isolation. tests/test_ui_scan.py: sections, CPU card, status-bar problems, repeated rescans.
 ## Module 3 real-machine (Windows)
 - `python -m pytest tests/test_system_integration.py -s` and `python -m pcinsight.core.cpu_board_info`; compare with Task Manager (CPU tab) and `msinfo32` (BaseBoard, BIOS Version/Date).
+
+## Module 4 automated
+- test_common.py: byte formatting, int parsing, PowerShell JSON variants/UTF-8/BOM, CIM name validation.
+- test_memory_info.py, test_gpu_info.py, test_storage_info.py: full reports, CIM/registry failures, fallbacks, empty results, placeholder values, 4 GB legacy cap, identical GPUs, volume errors, serial numbers never requested.
+- test_scan.py: ordering, prefix matching, isolation, concurrency. test_ui_scan.py: new cards/sections, filter.
+## Module 4 real-machine (Windows)
+- `python -m pytest tests/test_system_integration.py -s`; compare RAM with Task Manager > Memory (slots used, speed, form factor), GPU with Task Manager > GPU (dedicated memory), storage with Task Manager > Performance and Disk Management.

@@ -2,7 +2,7 @@ import threading
 
 from PySide6.QtWidgets import QApplication
 
-from helpers import sample_full_result, sample_result, wait_until
+from helpers import sample_everything, sample_full_result, sample_result, wait_until
 from pcinsight.ui.main_window import MainWindow
 
 
@@ -27,7 +27,8 @@ def test_scan_populates_dashboard_and_hardware(qapp):
     assert "TEST-PC" in dash.system_card.summary_label.text()
     assert dash.system_card.status_label.text() == "Scanned"
     assert dash.cards[1].status_label.text() == "Not collected"  # sample has no hardware sections
-    assert "Module 4" in dash.cards[2].status_label.text()
+    assert dash.cards[2].status_label.text() == "Not collected"
+    assert "Module 5" in dash.cards[5].status_label.text()
     w.close()
 
 
@@ -117,7 +118,7 @@ def test_hardware_sections_and_cpu_card(qapp):
     summary = dash.cards[1].summary_label.text()
     assert "Test CPU 9000" in summary and "8 cores / 16 threads" in summary and "Test Board" in summary
     assert dash.cards[1].status_label.text() == "Partial data (1 unavailable)"  # chipset not counted
-    assert "Module 4" in dash.cards[2].status_label.text()
+    assert dash.cards[2].status_label.text() == "Not collected"
     w.close()
 
 
@@ -143,4 +144,58 @@ def test_rescan_replaces_sections_without_leftovers(qapp):
         assert wait_until(qapp, lambda: hw.has_data and w.scan_bar.rescan_button.isEnabled())
     qapp.processEvents()
     assert list(hw.tables) == ["system", "cpu", "motherboard", "bios"]
+    w.close()
+
+
+def _scan_everything(qapp):
+    w = make_window(qapp, lambda: sample_everything())
+    w.scan_bar.rescan_button.click()
+    assert wait_until(qapp, lambda: w.pages["Hardware"].has_data)
+    return w
+
+
+def test_memory_gpu_storage_cards_and_sections(qapp):
+    w = _scan_everything(qapp)
+    hw, dash = w.pages["Hardware"], w.pages["Dashboard"]
+    assert list(hw.tables) == ["system", "cpu", "motherboard", "bios", "memory", "memory_module_1",
+                               "gpu_1", "storage_disk_1", "volumes"]
+    mem = dash.cards[2].summary_label.text()
+    assert "31.9 GB usable (32 GB installed)" in mem and "2 of 4 slots populated" in mem and "DDR4" in mem
+    assert dash.cards[2].status_label.text() == "Partial data (1 unavailable)"
+    assert "Test GPU 3080" in dash.cards[3].summary_label.text()
+    assert dash.cards[3].status_label.text() == "Scanned"
+    st = dash.cards[4].summary_label.text()
+    assert "Test SSD 970 (931.5 GB)" in st and "1 drive with free-space data" in st
+    assert "Module 5" in dash.cards[5].status_label.text() and "Module 6" in dash.cards[6].status_label.text()
+    w.close()
+
+
+def test_filter_hides_nonmatching_rows_and_sections(qapp):
+    w = _scan_everything(qapp)
+    hw = w.pages["Hardware"]
+    hw.filter_edit.setText("ddr4")
+    qapp.processEvents()
+    assert hw.tables["memory_module_1"].visible_keys() == ["type"]
+    assert hw.tables["gpu_1"].visible_keys() == []
+    assert hw.tables["gpu_1"].isHidden() and not hw.tables["memory_module_1"].isHidden()
+    assert hw.no_match.isHidden()  # there are matches, so no 'no match' message
+    hw.filter_edit.setText("zzz-nothing")
+    qapp.processEvents()
+    assert not hw.no_match.isHidden()
+    hw.filter_edit.setText("")
+    qapp.processEvents()
+    assert hw.no_match.isHidden() and not hw.tables["gpu_1"].isHidden()
+    assert len(hw.tables["gpu_1"].visible_keys()) == 2
+    w.close()
+
+
+def test_filter_survives_rescan(qapp):
+    w = _scan_everything(qapp)
+    hw = w.pages["Hardware"]
+    hw.filter_edit.setText("gpu")
+    w.scan_bar.rescan_button.click()
+    assert wait_until(qapp, lambda: w.scan_bar.rescan_button.isEnabled())
+    qapp.processEvents()
+    assert hw.tables["gpu_1"].visible_keys() == ["gpu_name"]  # only the row whose text contains "gpu"
+    assert hw.tables["storage_disk_1"].isHidden()
     w.close()

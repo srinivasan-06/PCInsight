@@ -114,3 +114,59 @@ def sample_full_result() -> ScanResult:
     r = sample_result()
     r.hardware = sample_hardware()
     return r
+
+
+# ---- Module 4 helpers ----
+from pcinsight.core.device_sources import DeviceSources  # noqa: E402
+
+GIB = 1024 ** 3
+
+
+def no_cim_all(cls, props):
+    raise CollectionError("PowerShell was not found")
+
+
+def no_ps(script):
+    raise CollectionError("PowerShell was not found")
+
+
+def make_device_sources(registry=None, **overrides) -> DeviceSources:
+    base = dict(
+        registry=fake_registry(registry or {}), cim_all=no_cim_all, powershell_json=no_ps,
+        memory_stats=lambda: (32 * GIB, 8 * GIB),
+        volumes=lambda: [("C:\\", "NTFS", "rw,fixed")],
+        disk_usage=lambda p: (500 * GIB, 380 * GIB, 120 * GIB), now=lambda: NOW)
+    base.update(overrides)
+    return DeviceSources(**base)
+
+
+def sample_device_sections() -> list:
+    return [
+        InfoSection("memory", "Memory (RAM)", [
+            InfoField("total_physical", "Total physical memory", "31.9 GB", Status.OK, "test"),
+            InfoField("installed", "Installed memory (sum of modules)", "32 GB", Status.OK, "test"),
+            InfoField("slots_total", "Memory slots", "4", Status.OK, "test"),
+            InfoField("slots_used", "Slots populated", "2", Status.OK, "test"),
+        ], NOW),
+        InfoSection("memory_module_1", "Memory module 1 \u2014 DIMM_A1", [
+            InfoField("type", "Memory type", "DDR4", Status.OK, "test"),
+            InfoField("speed", "Rated speed", None, Status.UNAVAILABLE, "test", "not reported"),
+        ], NOW),
+        InfoSection("gpu_1", "Graphics adapter 1 \u2014 Test GPU", [
+            InfoField("gpu_name", "Adapter", "Test GPU 3080", Status.OK, "test"),
+            InfoField("vram", "Video memory (VRAM)", "10 GB", Status.OK, "test"),
+        ], NOW),
+        InfoSection("storage_disk_1", "Storage device 1 \u2014 Test SSD", [
+            InfoField("model", "Model", "Test SSD 970", Status.OK, "test"),
+            InfoField("capacity", "Capacity", "931.5 GB", Status.OK, "test"),
+        ], NOW),
+        InfoSection("volumes", "Drives and free space", [
+            InfoField("volume_1", "C:\\", "NTFS \u00b7 500 GB total", Status.OK, "test"),
+        ], NOW),
+    ]
+
+
+def sample_everything() -> ScanResult:
+    r = sample_full_result()
+    r.hardware = r.hardware + sample_device_sections()
+    return r

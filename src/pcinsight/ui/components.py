@@ -152,6 +152,7 @@ class FieldTable(QFrame):
         self._grid.setColumnStretch(1, 1)
         self.copy_buttons: dict[str, QPushButton] = {}
         self.value_labels: dict[str, QLabel] = {}
+        self._rows: list[tuple[str, QWidget, QWidget, QPushButton, str]] = []
 
     def clear(self) -> None:
         while self._grid.count():
@@ -161,6 +162,7 @@ class FieldTable(QFrame):
                 w.deleteLater()
         self.copy_buttons.clear()
         self.value_labels.clear()
+        self._rows.clear()
 
     def set_fields(self, fields) -> None:
         from ..core.models import Status
@@ -203,6 +205,26 @@ class FieldTable(QFrame):
             self._grid.addWidget(btn, row, 2, Qt.AlignmentFlag.AlignTop)
             self.copy_buttons[f.key] = btn
             self.value_labels[f.key] = value
+            haystack = " ".join([f.label, text, f.source, f.note]).lower()
+            self._rows.append((f.key, label, box, btn, haystack))
+
+    def apply_filter(self, text: str) -> int:
+        """Show only rows containing `text` (case-insensitive). Returns the number of visible rows."""
+        needle = text.strip().lower()
+        shown = 0
+        for _key, label, box, btn, hay in self._rows:
+            show = not needle or needle in hay
+            shown += show
+            label.setVisible(show)
+            box.setVisible(show)
+            policy = btn.sizePolicy()
+            policy.setRetainSizeWhenHidden(show and not btn.isEnabled())
+            btn.setSizePolicy(policy)
+            btn.setVisible(show and btn.isEnabled())
+        return shown
+
+    def visible_keys(self) -> list[str]:
+        return [k for k, label, *_ in self._rows if not label.isHidden()]
 
     @staticmethod
     def _copy(button: QPushButton, text: str) -> None:
