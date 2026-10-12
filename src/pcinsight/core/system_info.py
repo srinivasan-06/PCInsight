@@ -9,19 +9,16 @@ Every field is collected independently, so one failure never affects the others.
 """
 from __future__ import annotations
 
-import json
-import logging
 import os
 import platform
 import re
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Mapping
 
-from .models import InfoField, Status, SystemOverview
-
-logger = logging.getLogger(__name__)
+from .common import (CollectionError, Reading as _Reading, make_field as _field,
+                     placeholder_note as _placeholder_note, query_cim, read_registry_value, reg_str)
+from .models import Status, SystemOverview
 
 CV_KEY = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"
 BIOS_KEY = r"HARDWARE\DESCRIPTION\System\BIOS"
@@ -29,64 +26,7 @@ SRC_REGISTRY_OS = "Windows registry (CurrentVersion)"
 SRC_REGISTRY_BIOS = "Windows registry (firmware/BIOS data)"
 SRC_CIM = "Windows CIM (Win32_ComputerSystem)"
 SRC_PLATFORM = "Python platform module"
-PLACEHOLDERS = {
-    "to be filled by o.e.m.", "system manufacturer", "system product name", "default string",
-    "o.e.m.", "oem", "not applicable", "none", "unknown", "system version",
-}
-
-
-class CollectionError(Exception):
-    """A value could not be retrieved. The message is safe to show to the user."""
-
-
 # --- real data sources -------------------------------------------------------------
-
-def read_registry_value(path: str, name: str) -> object:
-    try:
-        import winreg
-    except ImportError as exc:
-        raise CollectionError("The Windows registry is not available on this platform") from exc
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path, 0,
-                            winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
-            return winreg.QueryValueEx(key, name)[0]
-    except FileNotFoundError as exc:
-        raise CollectionError("Registry value not present on this system") from exc
-    except PermissionError as exc:
-        raise CollectionError("Permission denied reading the registry value") from exc
-    except OSError as exc:
-        raise CollectionError("The registry value could not be read") from exc
-
-
-_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
-def query_cim(class_name: str, properties: list[str], timeout: float = 15.0) -> dict[str, str]:
-    if not _IDENT.match(class_name) or not all(_IDENT.match(p) for p in properties):
-        raise CollectionError("Invalid CIM query")
-    script = (f"Get-CimInstance -ClassName {class_name} | "
-              f"Select-Object {','.join(properties)} | ConvertTo-Json -Compress")
-    cmd = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except FileNotFoundError as exc:
-        raise CollectionError("PowerShell was not found") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise CollectionError("The PowerShell query timed out") from exc
-    except OSError as exc:
-        raise CollectionError("PowerShell could not be started") from exc
-    if proc.returncode != 0:
-        raise CollectionError("The PowerShell query failed")
-    try:
-        data = json.loads(proc.stdout)
-        if isinstance(data, list):
-            data = data[0]
-        if not isinstance(data, dict):
-            raise ValueError
-    except (ValueError, IndexError) as exc:
-        raise CollectionError("The PowerShell query returned unreadable data") from exc
-    return {p: ("" if data.get(p) is None else str(data[p]).strip()) for p in properties}
 
 
 def _psutil_boot_time() -> float:
@@ -115,38 +55,8 @@ def default_sources() -> SystemSources:
 
 # --- field helpers -----------------------------------------------------------------
 
-@dataclass
-class _Reading:
-    value: str
-    source: str
-    note: str = ""
-
-
-def _field(key: str, label: str, default_source: str, fn: Callable[[], _Reading]) -> InfoField:
-    try:
-        r = fn()
-    except CollectionError as exc:
-        return InfoField(key, label, None, Status.UNAVAILABLE, default_source, str(exc))
-    except Exception as exc:  # collector boundary: never let one field crash a scan
-        logger.warning("Collector %s failed: %s", key, type(exc).__name__)
-        return InfoField(key, label, None, Status.UNAVAILABLE, default_source,
-                         "Unexpected error while reading this value")
-    if not r.value or not r.value.strip():
-        return InfoField(key, label, None, Status.EMPTY, r.source, r.note)
-    return InfoField(key, label, r.value.strip(), Status.OK, r.source, r.note)
-
-
-def _reg_str(s: SystemSources, path: str, name: str) -> str:
-    value = s.registry(path, name)
-    if value is None:
-        raise CollectionError("Registry value not present on this system")
-    return str(value).strip()
-
-
-def _placeholder_note(value: str) -> str:
-    if value.strip().lower() in PLACEHOLDERS:
-        return "The firmware reports a generic placeholder; the maker did not set a real value."
-    return ""
+def _reg_str(s: "SystemSources", path: str, name: str) -> str:
+    return reg_str(s.registry, path, name)
 
 
 def format_uptime(seconds: float) -> str:

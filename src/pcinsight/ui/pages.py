@@ -71,6 +71,7 @@ class DashboardPage(QWidget):
 
     def set_scanning(self) -> None:
         self.system_card.set_status("Scanning\u2026")
+        self.cards[1].set_status("Scanning\u2026")
 
     def show_result(self, result: ScanResult) -> None:
         ov = result.system
@@ -85,8 +86,33 @@ class DashboardPage(QWidget):
         self.system_card.set_summary("\n".join(lines) if lines else None)
         n = ov.unavailable_count
         self.system_card.set_status("Scanned" if n == 0 else f"Partial data ({n} unavailable)")
-        for card, module in zip(self.cards[1:], self._modules[1:]):
+        self._show_cpu_card(result)
+        for card, module in zip(self.cards[2:], self._modules[2:]):
             card.set_status(f"Not available yet (Module {module})")
+
+    def _show_cpu_card(self, result: ScanResult) -> None:
+        card = self.cards[1]
+        secs = [result.section(k) for k in ("cpu", "motherboard", "bios")]
+        secs = [x for x in secs if x is not None]
+        if not secs:
+            card.set_summary(None)
+            card.set_status("Not collected")
+            return
+        cpu = result.section("cpu")
+        lines = []
+        name = cpu.get("cpu_name") if cpu else None
+        if name and name.status is Status.OK:
+            lines.append(name.value)
+        cores, threads = (cpu.get("physical_cores"), cpu.get("logical_processors")) if cpu else (None, None)
+        if cores and threads and cores.status is Status.OK and threads.status is Status.OK:
+            lines.append(f"{cores.value} cores / {threads.value} threads")
+        board = result.section("motherboard")
+        model = board.get("board_model") if board else None
+        if model and model.status is Status.OK:
+            lines.append(f"Board: {model.value}")
+        card.set_summary("\n".join(lines) if lines else None)
+        n = sum(x.unavailable_count for x in secs)
+        card.set_status("Scanned" if n == 0 else f"Partial data ({n} unavailable)")
 
 
 class HardwarePage(QWidget):
@@ -98,41 +124,72 @@ class HardwarePage(QWidget):
         outer.addWidget(PageHeader("Hardware", "System, CPU, motherboard, BIOS, memory, GPU and storage."))
         self.empty = EmptyState(
             "No hardware data yet",
-            "Press \"Scan now\" to read system information from this computer. "
-            "CPU, memory, GPU and storage sections arrive in Modules 3-4.", NOT_SCANNED)
+            "Press \"Scan now\" to read information from this computer. "
+            "Memory, GPU and storage sections arrive in Module 4.", NOT_SCANNED)
         outer.addWidget(self.empty, 1)
 
         self.content = QWidget()
-        cl = QVBoxLayout(self.content)
-        cl.setContentsMargins(0, 0, 4, 0)
-        cl.setSpacing(12)
-        self.section_title = QLabel("System")
-        self.section_title.setObjectName("SectionTitle")
-        self.collected_label = QLabel("")
-        self.collected_label.setObjectName("Muted")
-        self.table = FieldTable()
-        note = QLabel(
-            "Values come from the Windows registry and, where needed, Windows CIM (PowerShell). "
-            "\"Unavailable\" means this app could not retrieve the value; it does not mean the "
-            "component is absent. \"Reported as empty\" means Windows answered with a blank value.")
-        note.setObjectName("Muted")
-        note.setWordWrap(True)
-        cl.addWidget(self.section_title)
-        cl.addWidget(self.collected_label)
-        cl.addWidget(self.table)
-        cl.addWidget(note)
-        cl.addStretch()
+        self._cl = QVBoxLayout(self.content)
+        self._cl.setContentsMargins(0, 0, 4, 0)
+        self._cl.setSpacing(10)
+        self.tables: dict[str, FieldTable] = {}
         self.scroll = _scroll(self.content)
         self.scroll.setVisible(False)
         outer.addWidget(self.scroll, 1)
 
     @property
+    def table(self) -> FieldTable:
+        """The System table (kept for Module 2 compatibility)."""
+        return self.tables["system"]
+
+    @property
     def has_data(self) -> bool:
         return self.scroll.isVisibleTo(self)
 
+    def _clear(self) -> None:
+        while self._cl.count():
+            item = self._cl.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self.tables.clear()
+
+    def _add_section(self, key: str, title: str, fields, note: str = "") -> None:
+        heading = QLabel(title)
+        heading.setObjectName("SectionTitle")
+        heading.setContentsMargins(0, 8, 0, 0)
+        self._cl.addWidget(heading)
+        if note:
+            n = QLabel(note)
+            n.setObjectName("Muted")
+            n.setWordWrap(True)
+            self._cl.addWidget(n)
+        table = FieldTable()
+        table.set_fields(fields)
+        self.tables[key] = table
+        self._cl.addWidget(table)
+
     def show_result(self, result: ScanResult) -> None:
-        self.table.set_fields(result.system.fields)
-        self.collected_label.setText(f"Collected {format_timestamp(result.scanned_at)}")
+        self._clear()
+        collected = QLabel(f"Collected {format_timestamp(result.scanned_at)}")
+        collected.setObjectName("Muted")
+        self._cl.addWidget(collected)
+        self._add_section("system", "System", result.system.fields)
+        for sec in result.hardware:
+            self._add_section(sec.key, sec.title, sec.fields, sec.note)
+        for err in result.errors:
+            e = QLabel(f"\u26a0 {err}")
+            e.setObjectName("Muted")
+            e.setWordWrap(True)
+            self._cl.addWidget(e)
+        legend = QLabel(
+            "Values come from the Windows registry and, where needed, Windows CIM (PowerShell). "
+            "\"Unavailable\" means this app could not retrieve the value; it does not mean the "
+            "component is absent. \"Reported as empty\" means Windows answered with a blank value. "
+            "\"Not exposed by Windows\" means no supported interface exists, so nothing is guessed.")
+        legend.setObjectName("Muted")
+        legend.setWordWrap(True)
+        self._cl.addWidget(legend)
+        self._cl.addStretch()
         self.empty.setVisible(False)
         self.scroll.setVisible(True)
 

@@ -1,18 +1,20 @@
 # Progress
-- [x] Module 1: UI shell (confirmed working on Windows by user)
-- [x] Module 2: System overview - code complete; 51 mocked/UI tests pass on Linux (2 Windows-only tests skipped there)
-- [ ] Module 2: confirmed on your Windows PC (run tests + integration test + manual checks)  <-- awaiting user
-- [ ] Modules 3-10
+- [x] Module 1: UI shell (confirmed on Windows)
+- [x] Module 2: System overview (confirmed on Windows)
+- [x] Module 3: CPU, motherboard, BIOS - code complete; 79 mocked/UI tests pass on Linux (5 Windows-only tests skipped there)
+- [ ] Module 3: confirmed on your Windows PC  <-- awaiting user
+- [ ] Modules 4-10
 
-## Module 2 decisions
-- Username is NOT collected (privacy; not needed for the overview).
-- Registry is the primary source (fast, no subprocess); PowerShell CIM is a fallback for manufacturer/model only.
-- Scans run on a background thread; the window waits for a running scan when closing.
-- No auto-scan at startup; the user presses "Scan now".
+## Module 3 decisions
+- Chipset is reported as "Not exposed by Windows" (new Status.UNSUPPORTED). Windows has no supported, reliable interface; guessing from PnP device names was rejected as unreliable.
+- Shared helpers moved to core/common.py (Module 2 behaviour unchanged; its tests re-run and pass).
+- Core counts/frequency from psutil; names/firmware data from registry with CIM fallback.
+- Scan collectors are isolated: a failure in one is reported in the status bar and does not block others.
+- Copy button hidden on rows without a value.
 
 ## Known limitations
-- Real Windows detection verified only on the developer's PC after you run the integration test; mocked tests do not prove every PC works.
-- Windows registry labels Windows 11 as "Windows 10"; corrected using build >= 22000.
-- Firmware may report placeholders ("To Be Filled By O.E.M."); shown with a note.
-- Uptime may be inflated by Windows Fast Startup.
-- No sidebar icons yet; theme choice not persisted (Module 8).
+- Real-PC behaviour is only proven on machines where you run the integration tests.
+- Current CPU frequency is a snapshot; Windows may report base clock instead of live boost.
+- Only CPU 0 name/vendor is read from the registry (multi-socket systems show the first processor).
+- Firmware may report placeholders ("Default string"); shown with a note.
+- Sidebar icons, persisted theme (Module 8), Hardware page search/filter (revisit after Module 4).

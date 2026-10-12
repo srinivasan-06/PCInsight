@@ -28,3 +28,32 @@ def test_values_match_the_machine(overview):
     assert overview.get("computer_name").value.lower() == os.environ["COMPUTERNAME"].lower()
     assert re.match(r"^\d{5}(\.\d+)?$", overview.get("os_build").value)
     assert overview.get("os_edition").value.startswith("Windows")
+
+
+# ---- Module 3 real-machine checks ----
+from pcinsight.core.cpu_board_info import collect_cpu_board_bios  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def hardware():
+    secs = {s.key: s for s in collect_cpu_board_bios()}
+    for s in secs.values():
+        print(f"\n== {s.title} ==")
+        for f in s.fields:
+            print(f"{f.label:30} {f.status.value:12} {f.value or f.note}")
+    return secs
+
+
+def test_cpu_real_data(hardware):
+    cpu = hardware["cpu"]
+    for key in ("cpu_name", "cpu_manufacturer", "physical_cores", "logical_processors"):
+        assert cpu.get(key).status is Status.OK, key
+    assert int(cpu.get("logical_processors").value) >= int(cpu.get("physical_cores").value) >= 1
+
+
+def test_bios_real_data(hardware):
+    assert hardware["bios"].get("bios_version").status is Status.OK
+
+
+def test_chipset_reported_as_unsupported(hardware):
+    assert hardware["motherboard"].get("chipset").status is Status.UNSUPPORTED

@@ -2,7 +2,7 @@ import threading
 
 from PySide6.QtWidgets import QApplication
 
-from helpers import sample_result, wait_until
+from helpers import sample_full_result, sample_result, wait_until
 from pcinsight.ui.main_window import MainWindow
 
 
@@ -26,7 +26,8 @@ def test_scan_populates_dashboard_and_hardware(qapp):
     assert hw.table.value_labels["computer_name"].text() == "TEST-PC"
     assert "TEST-PC" in dash.system_card.summary_label.text()
     assert dash.system_card.status_label.text() == "Scanned"
-    assert "Module 3" in dash.cards[1].status_label.text()
+    assert dash.cards[1].status_label.text() == "Not collected"  # sample has no hardware sections
+    assert "Module 4" in dash.cards[2].status_label.text()
     w.close()
 
 
@@ -100,3 +101,46 @@ def test_close_window_during_scan(qapp):
     w.close()
     qapp.processEvents()
     assert not w.controller.is_running
+
+
+def test_hardware_sections_and_cpu_card(qapp):
+    w = make_window(qapp, lambda: sample_full_result())
+    w.scan_bar.rescan_button.click()
+    hw, dash = w.pages["Hardware"], w.pages["Dashboard"]
+    assert wait_until(qapp, lambda: hw.has_data)
+    assert list(hw.tables) == ["system", "cpu", "motherboard", "bios"]
+    assert hw.tables["cpu"].value_labels["cpu_name"].text() == "Test CPU 9000"
+    chip = hw.tables["motherboard"]
+    assert chip.value_labels["chipset"].text() == "Not exposed by Windows"
+    assert not chip.copy_buttons["chipset"].isEnabled()
+    assert hw.tables["bios"].value_labels["bios_version"].text() == "Unavailable"
+    summary = dash.cards[1].summary_label.text()
+    assert "Test CPU 9000" in summary and "8 cores / 16 threads" in summary and "Test Board" in summary
+    assert dash.cards[1].status_label.text() == "Partial data (1 unavailable)"  # chipset not counted
+    assert "Module 4" in dash.cards[2].status_label.text()
+    w.close()
+
+
+def test_scan_problems_shown_in_status_bar(qapp):
+    def fn():
+        r = sample_result()
+        r.errors = ["CPU, motherboard and BIOS could not be read (RuntimeError)"]
+        return r
+
+    w = make_window(qapp, fn)
+    w.scan_bar.rescan_button.click()
+    assert wait_until(qapp, lambda: w.pages["Hardware"].has_data)
+    text = w.scan_bar.status_label.text()
+    assert "1 problem(s)" in text and "RuntimeError" in text
+    w.close()
+
+
+def test_rescan_replaces_sections_without_leftovers(qapp):
+    w = make_window(qapp, lambda: sample_full_result())
+    hw = w.pages["Hardware"]
+    for _ in range(3):
+        w.scan_bar.rescan_button.click()
+        assert wait_until(qapp, lambda: hw.has_data and w.scan_bar.rescan_button.isEnabled())
+    qapp.processEvents()
+    assert list(hw.tables) == ["system", "cpu", "motherboard", "bios"]
+    w.close()

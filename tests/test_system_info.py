@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from helpers import BASE_REGISTRY, BIOS_KEY, CV_KEY, NOW, make_sources, no_cim
-from pcinsight.core import system_info as si
+from pcinsight.core import common, system_info as si
 from pcinsight.core.models import Status
 from pcinsight.core.system_info import CollectionError, collect_system_overview, format_uptime
 
@@ -141,33 +141,33 @@ def _run_returning(stdout="", returncode=0):
 
 
 def test_query_cim_parses_object_and_list(monkeypatch):
-    monkeypatch.setattr(si.subprocess, "run", _run_returning('{"Manufacturer":"A","Model":null}'))
-    assert si.query_cim("Win32_ComputerSystem", ["Manufacturer", "Model"]) == {"Manufacturer": "A", "Model": ""}
-    monkeypatch.setattr(si.subprocess, "run", _run_returning('[{"Model":"B"}]'))
-    assert si.query_cim("Win32_ComputerSystem", ["Model"]) == {"Model": "B"}
+    monkeypatch.setattr(common.subprocess, "run", _run_returning('{"Manufacturer":"A","Model":null}'))
+    assert common.query_cim("Win32_ComputerSystem", ["Manufacturer", "Model"]) == {"Manufacturer": "A", "Model": ""}
+    monkeypatch.setattr(common.subprocess, "run", _run_returning('[{"Model":"B"}]'))
+    assert common.query_cim("Win32_ComputerSystem", ["Model"]) == {"Model": "B"}
 
 
 @pytest.mark.parametrize("exc", [FileNotFoundError(), subprocess.TimeoutExpired("x", 1), PermissionError()])
 def test_query_cim_process_errors(monkeypatch, exc):
     def raiser(*a, **k):
         raise exc
-    monkeypatch.setattr(si.subprocess, "run", raiser)
+    monkeypatch.setattr(common.subprocess, "run", raiser)
     with pytest.raises(CollectionError):
-        si.query_cim("Win32_ComputerSystem", ["Model"])
+        common.query_cim("Win32_ComputerSystem", ["Model"])
 
 
 @pytest.mark.parametrize("out,code", [("", 1), ("not json", 0), ("[]", 0), ("123", 0)])
 def test_query_cim_bad_output(monkeypatch, out, code):
-    monkeypatch.setattr(si.subprocess, "run", _run_returning(out, code))
+    monkeypatch.setattr(common.subprocess, "run", _run_returning(out, code))
     with pytest.raises(CollectionError):
-        si.query_cim("Win32_ComputerSystem", ["Model"])
+        common.query_cim("Win32_ComputerSystem", ["Model"])
 
 
 def test_query_cim_rejects_injection():
     with pytest.raises(CollectionError):
-        si.query_cim("Win32_ComputerSystem; calc", ["Model"])
+        common.query_cim("Win32_ComputerSystem; calc", ["Model"])
     with pytest.raises(CollectionError):
-        si.query_cim("Win32_ComputerSystem", ["Model | x"])
+        common.query_cim("Win32_ComputerSystem", ["Model | x"])
 
 
 def test_default_sources_never_crash():

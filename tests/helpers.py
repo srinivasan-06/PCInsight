@@ -65,3 +65,52 @@ def wait_until(qapp, predicate, timeout=5.0) -> bool:
             return True
         time.sleep(0.01)
     return predicate()
+
+
+# ---- Module 3 helpers ----
+from datetime import datetime as _dt  # noqa: E402
+
+from pcinsight.core.cpu_board_info import BIOS_KEY as CB_BIOS_KEY, CPU_KEY, CpuBoardSources  # noqa: E402
+from pcinsight.core.models import InfoSection  # noqa: E402
+
+CPU_REGISTRY = {
+    (CPU_KEY, "ProcessorNameString"): "Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz   ",
+    (CPU_KEY, "VendorIdentifier"): "GenuineIntel",
+    (CB_BIOS_KEY, "BaseBoardManufacturer"): "ASUSTeK COMPUTER INC.",
+    (CB_BIOS_KEY, "BaseBoardProduct"): "PRIME Z390-A",
+    (CB_BIOS_KEY, "BIOSVendor"): "American Megatrends Inc.",
+    (CB_BIOS_KEY, "BIOSVersion"): "2401",
+    (CB_BIOS_KEY, "BIOSReleaseDate"): "03/15/2023",
+}
+
+
+def make_cpu_sources(registry=None, **overrides) -> CpuBoardSources:
+    values = dict(CPU_REGISTRY if registry is None else registry)
+    base = dict(registry=fake_registry(values), cim_query=no_cim,
+                cpu_count=lambda logical: 16 if logical else 8,
+                cpu_freq_mhz=lambda: 3600.0, now=lambda: NOW)
+    base.update(overrides)
+    return CpuBoardSources(**base)
+
+
+def sample_hardware() -> list:
+    return [
+        InfoSection("cpu", "Processor (CPU)", [
+            InfoField("cpu_name", "CPU name", "Test CPU 9000", Status.OK, "test"),
+            InfoField("physical_cores", "Physical cores", "8", Status.OK, "test"),
+            InfoField("logical_processors", "Logical processors (threads)", "16", Status.OK, "test"),
+        ], NOW, "Cores belong to the CPU."),
+        InfoSection("motherboard", "Motherboard", [
+            InfoField("board_model", "Motherboard model", "Test Board", Status.OK, "test"),
+            InfoField("chipset", "Chipset", None, Status.UNSUPPORTED, "test", "no interface"),
+        ], NOW),
+        InfoSection("bios", "BIOS / UEFI firmware", [
+            InfoField("bios_version", "BIOS version", None, Status.UNAVAILABLE, "test", "denied"),
+        ], NOW),
+    ]
+
+
+def sample_full_result() -> ScanResult:
+    r = sample_result()
+    r.hardware = sample_hardware()
+    return r

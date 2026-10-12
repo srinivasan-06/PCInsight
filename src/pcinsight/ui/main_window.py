@@ -95,7 +95,11 @@ class MainWindow(QMainWindow):
         self.scan_bar.progress.setVisible(False)
         self.scan_bar.rescan_button.setEnabled(True)
         self.scan_bar.rescan_button.setText("Rescan")
-        self.scan_bar.status_label.setText(f"Last scan: {format_timestamp(result.scanned_at)}")
+        text = f"Last scan: {format_timestamp(result.scanned_at)}"
+        errors = getattr(result, "errors", [])
+        if errors:
+            text += f"  \u00b7  {len(errors)} problem(s): " + "; ".join(errors)
+        self.scan_bar.status_label.setText(text)
         self.pages["Dashboard"].show_result(result)
         self.pages["Hardware"].show_result(result)
 

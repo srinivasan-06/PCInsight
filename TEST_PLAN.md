@@ -10,3 +10,9 @@ Launch; click all 7 items; resize/maximize; toggle theme; confirm no console err
 - tests/test_ui_scan.py: dashboard/hardware population, honest unavailable/empty display, copy, long names, failure recovery, repeated rescans, close during scan.
 ## Module 2 real-machine (Windows)
 - `python -m pytest tests/test_system_integration.py -s` and `python -m pcinsight.core.system_info`: compare output with Settings > System > About and Task Manager.
+
+## Module 3 automated
+- tests/test_cpu_board_info.py: all fields, vendor mapping, registry+CIM fallback per class, unavailable vs empty, placeholders, psutil failures, long names, BIOS date formats, chipset never invented.
+- tests/test_scan.py: collector isolation. tests/test_ui_scan.py: sections, CPU card, status-bar problems, repeated rescans.
+## Module 3 real-machine (Windows)
+- `python -m pytest tests/test_system_integration.py -s` and `python -m pcinsight.core.cpu_board_info`; compare with Task Manager (CPU tab) and `msinfo32` (BaseBoard, BIOS Version/Date).

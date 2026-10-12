@@ -173,6 +173,8 @@ class FieldTable(QFrame):
                 text, name = f.value or "", ""
             elif f.status is Status.EMPTY:
                 text, name = "Reported as empty", "ValueMissing"
+            elif f.status is Status.UNSUPPORTED:
+                text, name = "Not exposed by Windows", "ValueMissing"
             else:
                 text, name = "Unavailable", "ValueMissing"
             value = _label(text, name)
@@ -189,6 +191,11 @@ class FieldTable(QFrame):
             btn.setObjectName("Ghost")
             btn.setAccessibleName(f"Copy {f.label}")
             btn.setEnabled(f.status is Status.OK)
+            if f.status is not Status.OK:  # nothing to copy: hide, but keep the column aligned
+                policy = btn.sizePolicy()
+                policy.setRetainSizeWhenHidden(True)
+                btn.setSizePolicy(policy)
+                btn.setVisible(False)
             if f.status is Status.OK:
                 btn.clicked.connect(lambda _=False, b=btn, t=f.value or "": self._copy(b, t))
             self._grid.addWidget(label, row, 0, Qt.AlignmentFlag.AlignTop)
