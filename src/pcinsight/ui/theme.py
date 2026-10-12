@@ -46,6 +46,15 @@ QPushButton#Primary {{ background: {t['accent']}; color: {t['accent_text']}; bor
 QPushButton#Primary:disabled {{ background: {t['badge_bg']}; color: {t['muted']}; }}
 QProgressBar {{ background: {t['badge_bg']}; border: none; border-radius: 4px; max-height: 8px; }}
 QProgressBar::chunk {{ background: {t['accent']}; border-radius: 4px; }}
+QLabel#SectionTitle {{ font-size: 12pt; font-weight: 600; }}
+QLabel#FieldLabel {{ color: {t['muted']}; font-weight: 600; }}
+QLabel#ValueMissing {{ color: {t['muted']}; font-style: italic; }}
+QLabel#Detail {{ color: {t['muted']}; font-size: 8.5pt; }}
+QLabel#Summary {{ font-size: 10pt; }}
+QPushButton#Ghost {{ background: transparent; color: {t['accent']}; border: 1px solid {t['border']};
+    border-radius: 6px; padding: 4px 12px; }}
+QPushButton#Ghost:hover {{ background: {t['badge_bg']}; }}
+QPushButton#Ghost:disabled {{ color: {t['muted']}; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; }}
 QScrollBar::handle:vertical {{ background: {t['border']}; border-radius: 5px; min-height: 30px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}

@@ -37,7 +37,7 @@ def test_no_fabricated_data(window):
     assert len(dash.cards) == 7
     assert all(c.status_label.text() == "Not scanned yet" for c in dash.cards)
     assert window.scan_bar.status_label.text() == "Last scan: never"
-    assert not window.scan_bar.rescan_button.isEnabled()
+    assert window.scan_bar.rescan_button.isEnabled()  # Module 2: scanning is available
     assert not window.scan_bar.progress.isVisible()
 
 

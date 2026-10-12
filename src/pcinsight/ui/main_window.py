@@ -4,19 +4,23 @@ from __future__ import annotations
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QHBoxLayout, QLabel, QMainWindow,
                                QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
+from ..core.models import format_timestamp
+from ..core.scan import run_scan
 from ..version import APP_NAME
+from .scan_controller import ScanController
 from .components import ScanStatusBar
 from .pages import build_pages
 from .theme import THEMES, build_stylesheet
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, theme: str = "light"):
+    def __init__(self, theme: str = "light", scan_fn=None):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         self.resize(1180, 760)
         self.setMinimumSize(820, 560)
         self.theme_name = theme
+        self.controller = ScanController(scan_fn or run_scan, self)
 
         root = QWidget()
         root.setObjectName("Root")
@@ -73,7 +77,37 @@ class MainWindow(QMainWindow):
 
         row.addWidget(self.sidebar)
         row.addWidget(content, 1)
+        self.scan_bar.rescan_button.setEnabled(True)
+        self.scan_bar.rescan_button.setToolTip("Collect fresh data from this computer.")
+        self.scan_bar.rescan_button.clicked.connect(self.controller.start)
+        self.controller.scan_started.connect(self._on_scan_started)
+        self.controller.scan_finished.connect(self._on_scan_finished)
+        self.controller.scan_failed.connect(self._on_scan_failed)
         self.apply_theme(theme)
+
+    def _on_scan_started(self) -> None:
+        self.scan_bar.rescan_button.setEnabled(False)
+        self.scan_bar.progress.setVisible(True)
+        self.scan_bar.status_label.setText("Scanning\u2026")
+        self.pages["Dashboard"].set_scanning()
+
+    def _on_scan_finished(self, result) -> None:
+        self.scan_bar.progress.setVisible(False)
+        self.scan_bar.rescan_button.setEnabled(True)
+        self.scan_bar.rescan_button.setText("Rescan")
+        self.scan_bar.status_label.setText(f"Last scan: {format_timestamp(result.scanned_at)}")
+        self.pages["Dashboard"].show_result(result)
+        self.pages["Hardware"].show_result(result)
+
+    def _on_scan_failed(self, message: str) -> None:
+        self.scan_bar.progress.setVisible(False)
+        self.scan_bar.rescan_button.setEnabled(True)
+        self.scan_bar.status_label.setText(f"Scan failed: {message}. Previous results (if any) are still shown.")
+        self.pages["Dashboard"].system_card.set_status("Scan failed")
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        self.controller.shutdown()
+        super().closeEvent(event)
 
     def apply_theme(self, name: str) -> None:
         self.theme_name = name
