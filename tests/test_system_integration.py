@@ -92,3 +92,29 @@ def test_storage_real_data():
     assert disks and disks[0].get("capacity").status is Status.OK
     vols = next(s for s in secs if s.key == "volumes")
     assert any(f.status is Status.OK for f in vols.fields)
+
+
+# ---- Module 5 real-machine checks ----
+from pcinsight.core.connectivity import run_connectivity_checks  # noqa: E402
+from pcinsight.core.network_info import collect_network  # noqa: E402
+
+
+def test_network_real_data():
+    scan = collect_network()
+    for s in scan.sections:
+        print(f"\n== {s.title} ==")
+        for f in s.fields:
+            print(f"{f.label:18} {f.status.value:12} {f.value or f.note}")
+    print("\nDefault IPv4 gateways:", scan.gateways)
+    adapters = [s for s in scan.sections if s.key.startswith("net_adapter_")]
+    assert adapters
+    assert any(s.get("status").status is Status.OK and s.get("mac").status is Status.OK for s in adapters)
+    assert any(s.get("ipv4").status is Status.OK for s in adapters)
+
+
+def test_connectivity_runs_without_crashing():
+    """Sends real probes (gateway ping, TCP 1.1.1.1:443, DNS lookup). Passes offline too."""
+    res = run_connectivity_checks(collect_network().gateways)
+    for f in res.sections[0].fields:
+        print(f"{f.label:36} {f.status.value:12} {f.value or f.note}")
+    assert {"internet", "dns"} <= {f.key for f in res.sections[0].fields}

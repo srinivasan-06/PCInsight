@@ -28,7 +28,8 @@ def test_scan_populates_dashboard_and_hardware(qapp):
     assert dash.system_card.status_label.text() == "Scanned"
     assert dash.cards[1].status_label.text() == "Not collected"  # sample has no hardware sections
     assert dash.cards[2].status_label.text() == "Not collected"
-    assert "Module 5" in dash.cards[5].status_label.text()
+    assert dash.cards[5].status_label.text() == "Not collected"
+    assert "Module 6" in dash.cards[6].status_label.text()
     w.close()
 
 
@@ -166,7 +167,7 @@ def test_memory_gpu_storage_cards_and_sections(qapp):
     assert dash.cards[3].status_label.text() == "Scanned"
     st = dash.cards[4].summary_label.text()
     assert "Test SSD 970 (931.5 GB)" in st and "1 drive with free-space data" in st
-    assert "Module 5" in dash.cards[5].status_label.text() and "Module 6" in dash.cards[6].status_label.text()
+    assert dash.cards[5].status_label.text() == "Not collected" and "Module 6" in dash.cards[6].status_label.text()
     w.close()
 
 
@@ -199,3 +200,119 @@ def test_filter_survives_rescan(qapp):
     assert hw.tables["gpu_1"].visible_keys() == ["gpu_name"]  # only the row whose text contains "gpu"
     assert hw.tables["storage_disk_1"].isHidden()
     w.close()
+
+
+# ---- Module 5: network page and connectivity tests ----
+from helpers import sample_everything_with_network  # noqa: E402
+from pcinsight.core.connectivity import ConnectivityResult  # noqa: E402
+from pcinsight.core.models import InfoField, InfoSection, Status  # noqa: E402
+from helpers import NOW  # noqa: E402
+
+
+def _conn_result():
+    f = [InfoField("internet", "Internet connection (TCP)", "Connected to 1.1.1.1:443 (12 ms)", Status.OK, "test")]
+    return ConnectivityResult([InfoSection("net_connectivity", "Connectivity tests", f, NOW, "separate note")], NOW)
+
+
+def make_net_window(qapp, conn_fn=None):
+    w = MainWindow(scan_fn=sample_everything_with_network, connectivity_fn=conn_fn or _conn_result)
+    w.show()
+    qapp.processEvents()
+    return w
+
+
+def test_network_page_shows_local_config_and_dashboard_card(qapp):
+    w = make_net_window(qapp)
+    net, dash = w.pages["Network"], w.pages["Dashboard"]
+    assert not net.has_data
+    w.scan_bar.rescan_button.click()
+    assert wait_until(qapp, lambda: net.has_data)
+    assert list(net.tables) == ["network", "net_adapter_1", "net_adapter_2"]
+    assert net.tables["net_adapter_1"].value_labels["gateway"].text() == "192.168.1.1 (IPv4)"
+    assert net.tables["net_adapter_2"].value_labels["ipv4"].text() == "Reported as empty"
+    summary = dash.cards[5].summary_label.text()
+    assert "2 adapters (1 up)" in summary and "Ethernet: 192.168.1.20" in summary and "Wi-Fi" not in summary
+    assert dash.cards[5].status_label.text() == "Scanned"      # 'empty' on an unplugged adapter is not a failure
+    assert "Connectivity tests: not run yet" in net.connectivity_label.text()
+    assert w._gateways == ["192.168.1.1"]
+    w.close()
+
+
+def test_hardware_page_excludes_network_sections(qapp):
+    w = make_net_window(qapp)
+    w.scan_bar.rescan_button.click()
+    assert wait_until(qapp, lambda: w.pages["Hardware"].has_data)
+    assert not any(k.startswith("net") for k in w.pages["Hardware"].tables)
+    w.close()
+
+
+def test_connectivity_tests_run_only_on_demand_and_stay_separate(qapp):
+    calls = []
+
+    def conn():
+        calls.append(1)
+        return _conn_result()
+
+    w = make_net_window(qapp, conn)
+    net = w.pages["Network"]
+    w.scan_bar.rescan_button.click()
+    assert wait_until(qapp, lambda: net.has_data)
+    assert calls == []                                         # a scan never sends probes
+    assert "net_connectivity" not in net.tables
+    net.run_button.click()
+    assert not net.run_button.isEnabled() and net.connectivity_progress.isVisibleTo(net)
+    assert wait_until(qapp, lambda: "net_connectivity" in net.tables)
+    assert calls == [1] and net.run_button.isEnabled() and not net.connectivity_progress.isVisibleTo(net)
+    assert net.connectivity_label.text() == "Connectivity tests last run: 2026-10-12 12:00:00"
+    assert net.tables["net_connectivity"].value_labels["internet"].text() == "Connected to 1.1.1.1:443 (12 ms)"
+    assert list(net.tables)[:3] == ["network", "net_adapter_1", "net_adapter_2"]   # local config still shown
+    w.close()
+
+
+def test_connectivity_tests_before_any_scan(qapp):
+    w = make_net_window(qapp)
+    net = w.pages["Network"]
+    net.run_button.click()
+    assert wait_until(qapp, lambda: net.has_data)
+    assert list(net.tables) == ["net_connectivity"]
+    w.close()
+
+
+def test_connectivity_failure_recovers(qapp):
+    calls = []
+
+    def conn():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("secret")
+        return _conn_result()
+
+    w = make_net_window(qapp, conn)
+    net = w.pages["Network"]
+    net.run_button.click()
+    assert wait_until(qapp, lambda: "failed" in net.connectivity_label.text())
+    assert "secret" not in net.connectivity_label.text() and net.run_button.isEnabled()
+    net.run_button.click()
+    assert wait_until(qapp, lambda: net.has_data)
+    w.close()
+
+
+def test_network_filter(qapp):
+    w = make_net_window(qapp)
+    w.scan_bar.rescan_button.click()
+    net = w.pages["Network"]
+    assert wait_until(qapp, lambda: net.has_data)
+    net.filter_edit.setText("gateway")
+    qapp.processEvents()
+    assert net.tables["net_adapter_1"].visible_keys() == ["gateway"]
+    assert net.tables["network"].isHidden()
+    w.close()
+
+
+def test_close_window_during_connectivity_tests(qapp):
+    import time as _t
+    w = make_net_window(qapp, lambda: _t.sleep(0.3) or _conn_result())
+    w.pages["Network"].run_button.click()
+    w.close()
+    qapp.processEvents()
+    assert not w.connectivity_controller.is_running

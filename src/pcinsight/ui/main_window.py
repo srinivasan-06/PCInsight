@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QHBoxLayout, QLabel, 
                                QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
 from ..core.models import format_timestamp
+from ..core.connectivity import run_connectivity_checks
 from ..core.scan import run_scan
 from ..version import APP_NAME
 from .scan_controller import ScanController
@@ -14,13 +15,16 @@ from .theme import THEMES, build_stylesheet
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, theme: str = "light", scan_fn=None):
+    def __init__(self, theme: str = "light", scan_fn=None, connectivity_fn=None):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         self.resize(1180, 760)
         self.setMinimumSize(820, 560)
         self.theme_name = theme
         self.controller = ScanController(scan_fn or run_scan, self)
+        self._gateways: list[str] = []
+        self.connectivity_controller = ScanController(
+            connectivity_fn or (lambda: run_connectivity_checks(list(self._gateways))), self)
 
         root = QWidget()
         root.setObjectName("Root")
@@ -83,6 +87,11 @@ class MainWindow(QMainWindow):
         self.controller.scan_started.connect(self._on_scan_started)
         self.controller.scan_finished.connect(self._on_scan_finished)
         self.controller.scan_failed.connect(self._on_scan_failed)
+        net = self.pages["Network"]
+        net.run_button.clicked.connect(self.connectivity_controller.start)
+        self.connectivity_controller.scan_started.connect(net.set_connectivity_running)
+        self.connectivity_controller.scan_finished.connect(net.show_connectivity)
+        self.connectivity_controller.scan_failed.connect(net.set_connectivity_failed)
         self.apply_theme(theme)
 
     def _on_scan_started(self) -> None:
@@ -102,6 +111,8 @@ class MainWindow(QMainWindow):
         self.scan_bar.status_label.setText(text)
         self.pages["Dashboard"].show_result(result)
         self.pages["Hardware"].show_result(result)
+        self.pages["Network"].show_result(result)
+        self._gateways = list(getattr(result, "gateways", []))
 
     def _on_scan_failed(self, message: str) -> None:
         self.scan_bar.progress.setVisible(False)
@@ -111,6 +122,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
         self.controller.shutdown()
+        self.connectivity_controller.shutdown()
         super().closeEvent(event)
 
     def apply_theme(self, name: str) -> None:

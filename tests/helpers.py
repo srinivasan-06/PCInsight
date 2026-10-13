@@ -170,3 +170,76 @@ def sample_everything() -> ScanResult:
     r = sample_full_result()
     r.hardware = r.hardware + sample_device_sections()
     return r
+
+
+# ---- Module 5 helpers ----
+from pcinsight.core.network_info import NetworkScan, NetworkSources  # noqa: E402
+
+
+def ps_root(adapters=(), routes=(), dns=(), dhcp=(), leases=(), failed=()):
+    return [{"adapters": list(adapters), "routes": list(routes), "dns": list(dns),
+             "dhcp": list(dhcp), "leases": list(leases), "failed": list(failed)}]
+
+
+def eth_ps(idx=7, name="Ethernet", status="Up", **extra):
+    ad = {"Name": name, "InterfaceDescription": "Intel(R) Ethernet Connection", "InterfaceIndex": idx,
+          "Status": status, "LinkSpeed": "1 Gbps", "MediaType": "802.3", "PhysicalMediaType": "802.3",
+          "Virtual": False, "HardwareInterface": True}
+    ad.update(extra)
+    return ad
+
+
+def full_ps():
+    return ps_root(
+        adapters=[eth_ps()],
+        routes=[{"InterfaceIndex": 7, "Family": "IPv4", "NextHop": "192.168.1.1"},
+                {"InterfaceIndex": 7, "Family": "IPv6", "NextHop": "::"}],
+        dns=[{"InterfaceIndex": 7, "Family": "IPv4", "Servers": ["192.168.1.1", "1.1.1.1"]},
+             {"InterfaceIndex": 7, "Family": "IPv6", "Servers": []}],
+        dhcp=[{"InterfaceIndex": 7, "Family": "IPv4", "Dhcp": "Enabled"}],
+        leases=[{"InterfaceIndex": 7, "DHCPEnabled": True, "DHCPServer": "192.168.1.1",
+                 "LeaseObtained": "2026-10-12 08:00", "LeaseExpires": "2026-10-13 08:00"}])
+
+
+ETH_ROWS = [("mac", "AA-BB-CC-DD-EE-FF", ""), ("ipv4", "192.168.1.20", "255.255.255.0"),
+            ("ipv6", "fe80::1234%Ethernet", "ffff:ffff:ffff:ffff::"),
+            ("ipv6", "2001:db8::20", "ffff:ffff:ffff:ffff::")]
+
+
+def make_net_sources(ifaces=None, stats=None, ps=None, ps_error=None, **kw) -> NetworkSources:
+    ifaces = {"Ethernet": ETH_ROWS} if ifaces is None else ifaces
+    stats = {"Ethernet": (True, 1000)} if stats is None else stats
+
+    def powershell(script):
+        if ps_error is not None:
+            raise ps_error
+        return ps if ps is not None else full_ps()
+
+    base = dict(interfaces=lambda: ifaces, if_stats=lambda: stats, powershell_json=powershell, now=lambda: NOW)
+    base.update(kw)
+    return NetworkSources(**base)
+
+
+def sample_network_sections() -> list:
+    return [
+        InfoSection("network", "Network overview", [
+            InfoField("adapters", "Adapters found", "2 adapters (1 up)", Status.OK, "test")], NOW, "note"),
+        InfoSection("net_adapter_1", "Ethernet \u2014 Test NIC", [
+            InfoField("status", "Status", "Up (connected)", Status.OK, "test"),
+            InfoField("ipv4", "IPv4 address", "192.168.1.20 \u00b7 mask 255.255.255.0 \u00b7 network 192.168.1.0/24",
+                      Status.OK, "test"),
+            InfoField("gateway", "Default gateway", "192.168.1.1 (IPv4)", Status.OK, "test"),
+        ], NOW),
+        InfoSection("net_adapter_2", "Wi-Fi \u2014 Test WLAN", [
+            InfoField("status", "Status", "Disconnected (no link)", Status.OK, "test"),
+            InfoField("ipv4", "IPv4 address", None, Status.EMPTY, "test", "No IPv4 address assigned."),
+            InfoField("gateway", "Default gateway", None, Status.EMPTY, "test", "No default gateway on this adapter."),
+        ], NOW),
+    ]
+
+
+def sample_everything_with_network() -> ScanResult:
+    r = sample_everything()
+    r.hardware = r.hardware + sample_network_sections()
+    r.gateways = ["192.168.1.1"]
+    return r

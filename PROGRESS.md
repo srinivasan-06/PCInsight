@@ -2,22 +2,22 @@
 - [x] Module 1: UI shell (confirmed on Windows)
 - [x] Module 2: System overview (confirmed on Windows)
 - [x] Module 3: CPU, motherboard, BIOS (confirmed on Windows)
-- [x] Module 4: Memory, GPU, storage - code complete; 149 mocked/UI tests pass on Linux (8 Windows-only tests skipped there)
-- [ ] Module 4: confirmed on your Windows PC  <-- awaiting user
-- [ ] Modules 5-10
+- [x] Module 4: Memory, GPU, storage (confirmed on Windows)
+- [x] Module 5: Network configuration - code complete; 207 mocked/UI tests pass on Linux (10 Windows-only tests skipped there)
+- [ ] Module 5: confirmed on your Windows PC  <-- awaiting user
+- [ ] Modules 6-10
 
-## Module 4 decisions
-- Memory: total/available from psutil (physical memory vs free memory kept separate); modules, type, speed, slots from CIM. Serial numbers deliberately NOT collected (privacy).
-- GPU: VRAM read from the display-driver registry key (accurate); legacy AdapterRAM only as fallback and shown as "4 GB or more" when capped (value 0xFFF00000 found by a failing test).
-- Storage: physical disks via Get-PhysicalDisk (type, bus, Windows health summary) with Win32_DiskDrive fallback; drive free space via psutil in a separate "volumes" section. Health is labelled as Windows' summary, not SMART; Unspecified/Unknown values are shown as unavailable, never guessed.
-- Network drives and optical drives are skipped (network drives can hang).
-- Collectors run in parallel threads and are isolated; PowerShell output forced to UTF-8 with BOM stripping.
-- Hardware page now has a filter box.
+## Module 5 decisions
+- Base data (names, status, IPs, MAC, mask) from psutil; ONE read-only PowerShell call adds adapter type, link speed, gateway, DNS, DHCP and lease. If PowerShell fails the base data still shows and the rest is "Unavailable" with the reason.
+- Connectivity tests are separate and on demand (button on the Network page) with their own timestamp; a scan never sends probes. "No reply" is reported as a result, with a note that some routers ignore ping.
+- Bluetooth/Wi-Fi/Ethernet detection uses PhysicalMediaType first (a test caught Bluetooth being misread as Ethernet).
+- Loopback interfaces hidden; self-assigned 169.254.x.x addresses flagged; on-link routes are not treated as gateways.
+- SSID/signal not collected (privacy and locale-dependent parsing). Addresses never logged (tested).
+- Test-suite fix: leaked windows slowed tests 10x; fixture now destroys them.
 
 ## Known limitations
-- Real-PC behaviour is only proven where you run the integration tests.
-- Memory speed is reported by Windows in MHz (usually equals MT/s for DDR).
-- Integrated GPUs share system memory; their VRAM figure can be small.
-- Disk health is Windows' summary only; no SMART details (would need admin rights / vendor tools).
-- Multi-socket CPUs: only processor 0 name/vendor.
+- Real-PC behaviour is only proven where you run the integration tests. The PowerShell script could not be executed in the Linux build environment; it is parsed defensively and covered by mocked tests only.
+- Gateway ping covers IPv4 gateways only (first two).
+- Wi-Fi details beyond connection type and link speed are not collected.
+- Connectivity targets are fixed constants until Settings (Module 8).
 - Sidebar icons, persisted theme (Module 8).

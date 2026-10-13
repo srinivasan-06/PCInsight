@@ -6,7 +6,8 @@ import sys
 
 from PySide6 import __version__ as pyside_version
 from PySide6.QtCore import qVersion
-from PySide6.QtWidgets import QLabel, QLineEdit, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton, QScrollArea,
+                               QVBoxLayout, QWidget)
 
 from ..core.models import Status, format_timestamp
 from ..core.scan import ScanResult
@@ -47,7 +48,7 @@ class DashboardPage(QWidget):
         ("Memory", "Installed RAM and memory modules.", 4, ("memory",)),
         ("Graphics", "GPU model, driver and video memory.", 4, ("gpu",)),
         ("Storage", "Drives, capacity and free space.", 4, ("storage", "volumes")),
-        ("Network", "Adapters, addresses, gateway and DNS.", 5, ()),
+        ("Network", "Adapters, addresses, gateway and DNS.", 5, ("network", "net")),
         ("Listening Ports", "Local TCP listeners and UDP endpoints.", 6, ()),
     ]
 
@@ -79,7 +80,8 @@ class DashboardPage(QWidget):
 
     def show_result(self, result: ScanResult) -> None:
         self._show_system(result)
-        summaries = {1: self._cpu_lines, 2: self._memory_lines, 3: self._gpu_lines, 4: self._storage_lines}
+        summaries = {1: self._cpu_lines, 2: self._memory_lines, 3: self._gpu_lines, 4: self._storage_lines,
+                     5: self._network_lines}
         for idx, (_t, _d, module, prefixes) in enumerate(self.CARDS):
             card = self.cards[idx]
             if idx == 0:
@@ -95,7 +97,10 @@ class DashboardPage(QWidget):
                 continue
             lines = summaries[idx](result)
             card.set_summary("\n".join(lines) if lines else None)
-            n = sum(x.unavailable_count for x in secs)
+            if idx == 5:  # "empty" is normal here (no gateway on an unplugged adapter): count real failures only
+                n = sum(1 for x in secs for f in x.fields if f.status is Status.UNAVAILABLE)
+            else:
+                n = sum(x.unavailable_count for x in secs)
             card.set_status("Scanned" if n == 0 else f"Partial data ({n} unavailable)")
 
     def _show_system(self, result: ScanResult) -> None:
@@ -147,6 +152,21 @@ class DashboardPage(QWidget):
         return lines
 
     @staticmethod
+    def _network_lines(result: ScanResult) -> list[str]:
+        overview = result.section("network")
+        lines = [v for v in (_val(overview, "adapters"),) if v]
+        shown = 0
+        for sec in result.sections_for("net"):
+            status, ip = _val(sec, "status"), _val(sec, "ipv4")
+            if not (status and status.startswith("Up") and ip) or "self-assigned" in ip.splitlines()[0]:
+                continue
+            lines.append(f"{sec.title.split(' \u2014 ')[0]}: {ip.splitlines()[0].split(' \u00b7 ')[0]}")
+            shown += 1
+            if shown == 3:
+                break
+        return lines
+
+    @staticmethod
     def _storage_lines(result: ScanResult) -> list[str]:
         disks = []
         for sec in result.sections_for("storage"):
@@ -164,31 +184,31 @@ class DashboardPage(QWidget):
         return lines
 
 
-class HardwarePage(QWidget):
-    def __init__(self):
+class SectionsPage(QWidget):
+    """Reusable page: header, filter box and a scrolling list of titled FieldTable sections."""
+
+    def __init__(self, title: str, subtitle: str, empty_title: str, empty_message: str, badge: str,
+                 filter_placeholder: str):
         super().__init__()
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(20)
-        outer.addWidget(PageHeader("Hardware", "System, CPU, motherboard, BIOS, memory, GPU and storage."))
-        self.empty = EmptyState(
-            "No hardware data yet",
-            "Press \"Scan now\" to read information from this computer. "
-            "You will see system, CPU, motherboard, BIOS, memory, graphics and storage details.", NOT_SCANNED)
-        outer.addWidget(self.empty, 1)
+        self.outer = QVBoxLayout(self)
+        self.outer.setContentsMargins(0, 0, 0, 0)
+        self.outer.setSpacing(20)
+        self.outer.addWidget(PageHeader(title, subtitle))
+        self.empty = EmptyState(empty_title, empty_message, badge)
+        self.outer.addWidget(self.empty, 1)
 
         self.filter_edit = QLineEdit()
         self.filter_edit.setObjectName("Search")
-        self.filter_edit.setPlaceholderText("Filter results (e.g. GPU, SSD, driver, DDR4)\u2026")
+        self.filter_edit.setPlaceholderText(filter_placeholder)
         self.filter_edit.setClearButtonEnabled(True)
-        self.filter_edit.setAccessibleName("Filter hardware results")
+        self.filter_edit.setAccessibleName(f"Filter {title.lower()} results")
         self.filter_edit.setVisible(False)
         self.filter_edit.textChanged.connect(self._apply_filter)
-        outer.addWidget(self.filter_edit)
+        self.outer.addWidget(self.filter_edit)
         self.no_match = QLabel("No rows match this filter.")
         self.no_match.setObjectName("Muted")
         self.no_match.setVisible(False)
-        outer.addWidget(self.no_match)
+        self.outer.addWidget(self.no_match)
 
         self.content = QWidget()
         self._cl = QVBoxLayout(self.content)
@@ -198,12 +218,7 @@ class HardwarePage(QWidget):
         self._section_widgets: dict[str, list[QWidget]] = {}
         self.scroll = _scroll(self.content)
         self.scroll.setVisible(False)
-        outer.addWidget(self.scroll, 1)
-
-    @property
-    def table(self) -> FieldTable:
-        """The System table (kept for Module 2 compatibility)."""
-        return self.tables["system"]
+        self.outer.addWidget(self.scroll, 1)
 
     @property
     def has_data(self) -> bool:
@@ -230,6 +245,7 @@ class HardwarePage(QWidget):
     def _add_section(self, key: str, title: str, fields, note: str = "") -> None:
         heading = QLabel(title)
         heading.setObjectName("SectionTitle")
+        heading.setWordWrap(True)
         heading.setContentsMargins(0, 8, 0, 0)
         self._cl.addWidget(heading)
         extras: list[QWidget] = [heading]
@@ -245,32 +261,126 @@ class HardwarePage(QWidget):
         self._section_widgets[key] = extras
         self._cl.addWidget(table)
 
-    def show_result(self, result: ScanResult) -> None:
+    def render(self, header_lines: list[str], sections, errors: list[str], legend: str) -> None:
+        """sections: iterable of (key, title, fields, note)."""
         self._clear()
-        collected = QLabel(f"Collected {format_timestamp(result.scanned_at)}")
-        collected.setObjectName("Muted")
-        self._cl.addWidget(collected)
-        self._add_section("system", "System", result.system.fields)
-        for sec in result.hardware:
-            self._add_section(sec.key, sec.title, sec.fields, sec.note)
-        for err in result.errors:
+        for line in header_lines:
+            lab = QLabel(line)
+            lab.setObjectName("Muted")
+            self._cl.addWidget(lab)
+        for key, title, fields, note in sections:
+            self._add_section(key, title, fields, note)
+        for err in errors:
             e = QLabel(f"\u26a0 {err}")
             e.setObjectName("Muted")
             e.setWordWrap(True)
             self._cl.addWidget(e)
-        legend = QLabel(
-            "Values come from the Windows registry and, where needed, Windows CIM (PowerShell). "
-            "\"Unavailable\" means this app could not retrieve the value; it does not mean the "
-            "component is absent. \"Reported as empty\" means Windows answered with a blank value. "
-            "\"Not exposed by Windows\" means no supported interface exists, so nothing is guessed.")
-        legend.setObjectName("Muted")
-        legend.setWordWrap(True)
-        self._cl.addWidget(legend)
+        if legend:
+            lg = QLabel(legend)
+            lg.setObjectName("Muted")
+            lg.setWordWrap(True)
+            self._cl.addWidget(lg)
         self._cl.addStretch()
         self.empty.setVisible(False)
         self.scroll.setVisible(True)
         self.filter_edit.setVisible(True)
         self._apply_filter(self.filter_edit.text())
+
+
+LEGEND = ("Values come from the Windows registry, Windows networking/CIM (PowerShell) and psutil. "
+          "\"Unavailable\" means this app could not retrieve the value; it does not mean the component is "
+          "absent. \"Reported as empty\" means Windows answered with a blank value or none. "
+          "\"Not exposed by Windows\" means no supported interface exists, so nothing is guessed.")
+
+
+class HardwarePage(SectionsPage):
+    def __init__(self):
+        super().__init__(
+            "Hardware", "System, CPU, motherboard, BIOS, memory, GPU and storage.",
+            "No hardware data yet",
+            "Press \"Scan now\" to read information from this computer. "
+            "You will see system, CPU, motherboard, BIOS, memory, graphics and storage details.", NOT_SCANNED,
+            "Filter results (e.g. GPU, SSD, driver, DDR4)\u2026")
+
+    @property
+    def table(self) -> FieldTable:
+        """The System table (kept for Module 2 compatibility)."""
+        return self.tables["system"]
+
+    def show_result(self, result: ScanResult) -> None:
+        net = {id(x) for x in result.network_sections()}
+        sections = [("system", "System", result.system.fields, "")]
+        sections += [(x.key, x.title, x.fields, x.note) for x in result.hardware if id(x) not in net]
+        self.render([f"Collected {format_timestamp(result.scanned_at)}"], sections, result.errors, LEGEND)
+
+
+class NetworkPage(SectionsPage):
+    """Local configuration (from the scan) plus optional, user-started connectivity tests."""
+
+    def __init__(self):
+        super().__init__(
+            "Network", "Adapters, addresses, gateway, DNS and optional connectivity tests.",
+            "No network data yet",
+            "Press \"Scan now\" to read this computer's network configuration. Connectivity tests are started "
+            "separately with the button above.", NOT_SCANNED,
+            "Filter results (e.g. Wi-Fi, gateway, DHCP, IPv6)\u2026")
+        self._scan: ScanResult | None = None
+        self._connectivity = None
+        bar = QFrame()
+        bar.setObjectName("ScanBar")
+        bl = QHBoxLayout(bar)
+        bl.setContentsMargins(16, 10, 16, 10)
+        self.connectivity_label = QLabel("Connectivity tests: not run yet. They send small network probes only when you press the button.")
+        self.connectivity_label.setObjectName("Muted")
+        self.connectivity_label.setWordWrap(True)
+        self.connectivity_progress = QProgressBar()
+        self.connectivity_progress.setRange(0, 0)
+        self.connectivity_progress.setTextVisible(False)
+        self.connectivity_progress.setFixedWidth(120)
+        self.connectivity_progress.setVisible(False)
+        self.run_button = QPushButton("Run connectivity tests")
+        self.run_button.setObjectName("Primary")
+        self.run_button.setToolTip("Pings your default gateway, tries a TCP connection to 1.1.1.1 (then 8.8.8.8) "
+                                   "and looks up example.com. Nothing else is sent.")
+        bl.addWidget(self.connectivity_label, 1)
+        bl.addWidget(self.connectivity_progress)
+        bl.addWidget(self.run_button)
+        self.outer.insertWidget(1, bar)
+
+    def show_result(self, result: ScanResult) -> None:
+        self._scan = result
+        self._render()
+
+    def set_connectivity_running(self) -> None:
+        self.run_button.setEnabled(False)
+        self.connectivity_progress.setVisible(True)
+        self.connectivity_label.setText("Running connectivity tests\u2026")
+
+    def show_connectivity(self, res) -> None:
+        self._connectivity = res
+        self.run_button.setEnabled(True)
+        self.connectivity_progress.setVisible(False)
+        self.connectivity_label.setText(f"Connectivity tests last run: {format_timestamp(res.ran_at)}")
+        self._render()
+
+    def set_connectivity_failed(self, message: str) -> None:
+        self.run_button.setEnabled(True)
+        self.connectivity_progress.setVisible(False)
+        self.connectivity_label.setText(f"Connectivity tests failed: {message}")
+
+    def _render(self) -> None:
+        lines, sections, errors = [], [], []
+        if self._scan is not None:
+            lines.append(f"Local configuration collected {format_timestamp(self._scan.scanned_at)}")
+            sections += [(x.key, x.title, x.fields, x.note) for x in self._scan.network_sections()]
+            errors = [e for e in self._scan.errors if e.startswith("Network")]
+        else:
+            lines.append("Local configuration: not collected yet (press \"Scan now\").")
+        if self._connectivity is not None:
+            lines.append(f"Connectivity tests run {format_timestamp(self._connectivity.ran_at)} "
+                         "(separate from the configuration above)")
+            sections += [(x.key, x.title, x.fields, x.note) for x in self._connectivity.sections]
+        self.render(lines, sections, errors, LEGEND)
 
 
 class AboutPage(QWidget):
@@ -290,10 +400,7 @@ def build_pages() -> list[tuple[str, QWidget]]:
     return [
         ("Dashboard", DashboardPage()),
         ("Hardware", HardwarePage()),
-        ("Network", PlaceholderPage(
-            "Network", "Adapters, addresses, gateway, DNS and connectivity checks.",
-            "No network data yet",
-            "Network inspection arrives in Module 5.", "Coming in Module 5")),
+        ("Network", NetworkPage()),
         ("Port Analyzer", PlaceholderPage(
             "Port Analyzer", "Local listening TCP ports and UDP endpoints on this computer only.",
             "No port data yet",

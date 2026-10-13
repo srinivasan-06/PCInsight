@@ -23,3 +23,10 @@ Launch; click all 7 items; resize/maximize; toggle theme; confirm no console err
 - test_scan.py: ordering, prefix matching, isolation, concurrency. test_ui_scan.py: new cards/sections, filter.
 ## Module 4 real-machine (Windows)
 - `python -m pytest tests/test_system_integration.py -s`; compare RAM with Task Manager > Memory (slots used, speed, form factor), GPU with Task Manager > GPU (dedicated memory), storage with Task Manager > Performance and Disk Management.
+
+## Module 5 automated
+- test_network_info.py: full adapter, connection-type detection, disconnected/APIPA, virtual, multiple adapters and ordering, loopback hidden, PowerShell failure and partial failure, bad PowerShell shapes, PowerShell-only adapters, DHCP off, malformed addresses, listing failure, no address logging, script is read-only.
+- test_connectivity.py: all-pass, no reply, ping unavailable, no gateway, gateway limit, TCP fallback, failure reasons, DNS failure, contained exceptions, ping output parsing (incl. localized), argument-list (no shell) and input validation, DNS timeout.
+- test_ui_scan.py: network page, local vs connectivity separation, on-demand only, failure recovery, filter, close during tests.
+## Module 5 real-machine (Windows)
+- `python -m pytest tests/test_system_integration.py -s`; compare with `ipconfig /all` (IPv4, mask, gateway, DNS, DHCP, MAC) and Settings > Network & internet.
