@@ -243,3 +243,67 @@ def sample_everything_with_network() -> ScanResult:
     r.hardware = r.hardware + sample_network_sections()
     r.gateways = ["192.168.1.1"]
     return r
+
+
+# ---- Module 6 helpers ----
+from pcinsight.core.common import CollectionError as _CE  # noqa: E402
+from pcinsight.core.ports_info import PortSources, RawEndpoint  # noqa: E402
+
+PROCS = {4: "System", 1234: "svchost.exe", 2200: "mysqld.exe", 3300: "python.exe"}
+
+
+def proc_name(pid):
+    if pid == 5555:
+        raise _CE("access denied")
+    if pid == 6666:
+        raise _CE("the process had already exited")
+    if pid in PROCS:
+        return PROCS[pid]
+    raise _CE("lookup failed")
+
+
+def ep(proto, address, port, pid=1234, family=None):
+    return RawEndpoint(proto, family or ("ipv6" if ":" in address else "ipv4"), address, port, pid)
+
+
+def make_port_sources(tcp=(), udp=(), tcp_error=None, udp_error=None, names=None, **kw) -> PortSources:
+    def conns(kind):
+        err = tcp_error if kind == "tcp" else udp_error
+        if err is not None:
+            raise err
+        return list(tcp if kind == "tcp" else udp)
+
+    base = dict(connections=conns, process_name=names or proc_name,
+                service_name=lambda port, proto: None, now=lambda: NOW)
+    base.update(kw)
+    return PortSources(**base)
+
+
+def sample_ports_sections() -> list:
+    return [
+        InfoSection("ports", "Listening ports overview", [
+            InfoField("tcp_count", "Listening TCP endpoints", "3", Status.OK, "test"),
+            InfoField("udp_count", "UDP endpoints (reachability not verified)", "2", Status.OK, "test"),
+            InfoField("important", "Important ports with a local listener", "135, 445 listening (2 of 15)", Status.OK, "test"),
+        ], NOW, "overview note"),
+        InfoSection("ports_important", "Important ports", [
+            InfoField("port_445", "Port 445 \u00b7 SMB", "Listening locally\n0.0.0.0:445 \u00b7 all interfaces \u00b7 System (PID 4)",
+                      Status.OK, "test"),
+            InfoField("port_22", "Port 22 \u00b7 SSH", "No local listener detected", Status.OK, "test"),
+        ], NOW),
+        InfoSection("ports_tcp", "All listening TCP endpoints", [
+            InfoField("tcp_1", "445/TCP \u00b7 SMB", "Listening locally\n0.0.0.0:445 \u00b7 all interfaces \u00b7 System (PID 4)", Status.OK, "test"),
+            InfoField("tcp_2", "3306/TCP \u00b7 MySQL", "Listening locally\n127.0.0.1:3306 \u00b7 loopback only \u00b7 Process details unavailable (access denied; PID 5555)",
+                      Status.OK, "test"),
+        ], NOW),
+        InfoSection("ports_udp", "All UDP endpoints", [
+            InfoField("udp_1", "5353/UDP \u00b7 mDNS", "UDP endpoint detected; remote reachability not verified\n0.0.0.0:5353 \u00b7 all interfaces \u00b7 svchost.exe (PID 1234)",
+                      Status.OK, "test"),
+        ], NOW),
+    ]
+
+
+def sample_with_ports() -> ScanResult:
+    r = sample_everything_with_network()
+    r.hardware = r.hardware + sample_ports_sections()
+    return r

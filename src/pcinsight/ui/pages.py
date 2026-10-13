@@ -49,7 +49,7 @@ class DashboardPage(QWidget):
         ("Graphics", "GPU model, driver and video memory.", 4, ("gpu",)),
         ("Storage", "Drives, capacity and free space.", 4, ("storage", "volumes")),
         ("Network", "Adapters, addresses, gateway and DNS.", 5, ("network", "net")),
-        ("Listening Ports", "Local TCP listeners and UDP endpoints.", 6, ()),
+        ("Listening Ports", "Local TCP listeners and UDP endpoints.", 6, ("ports",)),
     ]
 
     def __init__(self):
@@ -81,7 +81,7 @@ class DashboardPage(QWidget):
     def show_result(self, result: ScanResult) -> None:
         self._show_system(result)
         summaries = {1: self._cpu_lines, 2: self._memory_lines, 3: self._gpu_lines, 4: self._storage_lines,
-                     5: self._network_lines}
+                     5: self._network_lines, 6: self._ports_lines}
         for idx, (_t, _d, module, prefixes) in enumerate(self.CARDS):
             card = self.cards[idx]
             if idx == 0:
@@ -97,7 +97,7 @@ class DashboardPage(QWidget):
                 continue
             lines = summaries[idx](result)
             card.set_summary("\n".join(lines) if lines else None)
-            if idx == 5:  # "empty" is normal here (no gateway on an unplugged adapter): count real failures only
+            if idx in (5, 6):  # "empty" is normal here (no gateway on an unplugged adapter, no listeners): count real failures only
                 n = sum(1 for x in secs for f in x.fields if f.status is Status.UNAVAILABLE)
             else:
                 n = sum(x.unavailable_count for x in secs)
@@ -166,6 +166,17 @@ class DashboardPage(QWidget):
             shown += 1
             if shown == 3:
                 break
+        return lines
+
+    @staticmethod
+    def _ports_lines(result: ScanResult) -> list[str]:
+        ov = result.section("ports")
+        tcp, udp, imp = _val(ov, "tcp_count"), _val(ov, "udp_count"), _val(ov, "important")
+        lines = []
+        if tcp and udp:
+            lines.append(f"{tcp} TCP listeners \u00b7 {udp} UDP endpoints")
+        if imp:
+            lines.append(f"Important ports: {imp}")
         return lines
 
     @staticmethod
@@ -310,10 +321,35 @@ class HardwarePage(SectionsPage):
         return self.tables["system"]
 
     def show_result(self, result: ScanResult) -> None:
-        net = {id(x) for x in result.network_sections()}
+        skip = {id(x) for x in result.network_sections() + result.ports_sections()}
         sections = [("system", "System", result.system.fields, "")]
-        sections += [(x.key, x.title, x.fields, x.note) for x in result.hardware if id(x) not in net]
+        sections += [(x.key, x.title, x.fields, x.note) for x in result.hardware if id(x) not in skip]
         self.render([f"Collected {format_timestamp(result.scanned_at)}"], sections, result.errors, LEGEND)
+
+
+PORTS_LEGEND = ("Statuses: \"Listening locally\" = a program on this PC is waiting for connections on that port "
+                "(not proof that other computers can reach it). \"No local listener detected\" = nothing on this PC is "
+                "listening on that TCP port (not proof it is closed from outside). \"Process details unavailable\" = "
+                "Windows would not tell us which program owns the port. \"UDP endpoint detected; remote reachability "
+                "not verified\" = a UDP socket exists; UDP has no open/closed state.")
+
+
+class PortsPage(SectionsPage):
+    def __init__(self):
+        super().__init__(
+            "Port Analyzer", "Programs listening for network connections on this computer. Other computers are never scanned.",
+            "No port data yet",
+            "Press \"Scan now\" to list the TCP listeners and UDP endpoints on this computer. "
+            "Nothing is sent to other computers and nothing on your PC is changed.", NOT_SCANNED,
+            "Filter ports (e.g. 445, svchost, loopback, UDP)\u2026")
+
+    def show_result(self, result: ScanResult) -> None:
+        sections = [(x.key, x.title, x.fields, x.note) for x in result.ports_sections()]
+        errors = [e for e in result.errors if e.startswith("Listening ports")]
+        if not sections:
+            return
+        self.render([f"Collected {format_timestamp(result.scanned_at)}  \u00b7  this computer only"],
+                    sections, errors, PORTS_LEGEND)
 
 
 class NetworkPage(SectionsPage):
@@ -403,10 +439,7 @@ def build_pages() -> list[tuple[str, QWidget]]:
         ("Dashboard", DashboardPage()),
         ("Hardware", HardwarePage()),
         ("Network", NetworkPage()),
-        ("Port Analyzer", PlaceholderPage(
-            "Port Analyzer", "Local listening TCP ports and UDP endpoints on this computer only.",
-            "No port data yet",
-            "The local port analyzer arrives in Module 6.", "Coming in Module 6")),
+        ("Port Analyzer", PortsPage()),
         ("Reports", PlaceholderPage(
             "Reports", "Export scan results as a PDF report.",
             "No report available",

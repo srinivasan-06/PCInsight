@@ -29,7 +29,7 @@ def test_scan_populates_dashboard_and_hardware(qapp):
     assert dash.cards[1].status_label.text() == "Not collected"  # sample has no hardware sections
     assert dash.cards[2].status_label.text() == "Not collected"
     assert dash.cards[5].status_label.text() == "Not collected"
-    assert "Module 6" in dash.cards[6].status_label.text()
+    assert dash.cards[6].status_label.text() == "Not collected"
     w.close()
 
 
@@ -167,7 +167,7 @@ def test_memory_gpu_storage_cards_and_sections(qapp):
     assert dash.cards[3].status_label.text() == "Scanned"
     st = dash.cards[4].summary_label.text()
     assert "Test SSD 970 (931.5 GB)" in st and "1 drive with free-space data" in st
-    assert dash.cards[5].status_label.text() == "Not collected" and "Module 6" in dash.cards[6].status_label.text()
+    assert dash.cards[5].status_label.text() == "Not collected" and dash.cards[6].status_label.text() == "Not collected"
     w.close()
 
 
@@ -316,3 +316,59 @@ def test_close_window_during_connectivity_tests(qapp):
     w.close()
     qapp.processEvents()
     assert not w.connectivity_controller.is_running
+
+
+# ---- Module 6: port analyzer page ----
+from helpers import sample_with_ports  # noqa: E402
+
+
+def make_ports_window(qapp):
+    w = MainWindow(scan_fn=sample_with_ports)
+    w.show()
+    qapp.processEvents()
+    w.scan_bar.rescan_button.click()
+    assert wait_until(qapp, lambda: w.pages["Port Analyzer"].has_data)
+    return w
+
+
+def test_ports_page_and_dashboard_card(qapp):
+    w = make_ports_window(qapp)
+    page, dash = w.pages["Port Analyzer"], w.pages["Dashboard"]
+    assert list(page.tables) == ["ports", "ports_important", "ports_tcp", "ports_udp"]
+    assert page.tables["ports_tcp"].value_labels["tcp_2"].text().startswith("Listening locally")
+    assert "Process details unavailable (access denied; PID 5555)" in page.tables["ports_tcp"].value_labels["tcp_2"].text()
+    assert page.tables["ports_udp"].value_labels["udp_1"].text().startswith("UDP endpoint detected; remote reachability not verified")
+    summary = dash.cards[6].summary_label.text()
+    assert "3 TCP listeners \u00b7 2 UDP endpoints" in summary and "Important ports: 135, 445 listening (2 of 15)" in summary
+    assert dash.cards[6].status_label.text() == "Scanned"
+    w.close()
+
+
+def test_hardware_and_network_pages_exclude_port_sections(qapp):
+    w = make_ports_window(qapp)
+    assert wait_until(qapp, lambda: w.pages["Hardware"].has_data)
+    assert not any(k.startswith("ports") for k in w.pages["Hardware"].tables)
+    assert not any(k.startswith("ports") for k in w.pages["Network"].tables)
+    w.close()
+
+
+def test_ports_page_filter(qapp):
+    w = make_ports_window(qapp)
+    page = w.pages["Port Analyzer"]
+    page.filter_edit.setText("loopback")
+    qapp.processEvents()
+    assert page.tables["ports_tcp"].visible_keys() == ["tcp_2"]
+    assert page.tables["ports_udp"].isHidden()
+    page.filter_edit.setText("udp")
+    qapp.processEvents()
+    assert page.tables["ports_udp"].visible_keys() == ["udp_1"]
+    w.close()
+
+
+def test_ports_page_empty_before_scan_and_explains_scope(qapp):
+    w = make_window(qapp, lambda: sample_with_ports())
+    page = w.pages["Port Analyzer"]
+    assert not page.has_data
+    text = " ".join(l.text() for l in page.empty.findChildren(__import__("PySide6.QtWidgets", fromlist=["QLabel"]).QLabel))
+    assert "Nothing is sent to other computers" in text
+    w.close()

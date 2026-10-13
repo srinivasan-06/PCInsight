@@ -112,6 +112,7 @@ class MainWindow(QMainWindow):
         self.pages["Dashboard"].show_result(result)
         self.pages["Hardware"].show_result(result)
         self.pages["Network"].show_result(result)
+        self.pages["Port Analyzer"].show_result(result)
         self._gateways = list(getattr(result, "gateways", []))
 
     def _on_scan_failed(self, message: str) -> None:

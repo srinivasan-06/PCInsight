@@ -35,3 +35,9 @@ Launch; click all 7 items; resize/maximize; toggle theme; confirm no console err
 - Before every delivery the full suite runs on Python 3.10, 3.11 and 3.12.
 - tests/test_source_compat.py rejects f-string syntax that only 3.12 accepts.
 - tests/test_network_script.py runs the real network PowerShell script against stand-in cmdlets (skipped if no PowerShell is installed).
+
+## Module 6 automated
+- test_ports_info.py: exact status wording, all listeners (not only important ones), port->process mapping, one lookup per PID, IPv4/IPv6 rows, binding classification, no remote-reachability claims, important ports (listening/absent/UDP too), UDP never open/closed, every process-lookup failure type, configurable/invalid port lists, service names, TCP/UDP table failures isolated, empty results, duplicates, 800 endpoints, read-only guard, no address logging, REAL TCP/UDP sockets mapped to this process, a real closed port.
+- test_ui_scan.py: ports page, dashboard card, other pages exclude port sections, filter, empty state wording.
+## Module 6 real-machine (Windows)
+- `python -m pytest tests/test_system_integration.py -s`; compare with `netstat -ano -p tcp | findstr LISTENING` and `Get-NetTCPConnection -State Listen` (PIDs) plus Task Manager > Details (PID -> name).

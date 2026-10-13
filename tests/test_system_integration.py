@@ -118,3 +118,21 @@ def test_connectivity_runs_without_crashing():
     for f in res.sections[0].fields:
         print(f"{f.label:36} {f.status.value:12} {f.value or f.note}")
     assert {"internet", "dns"} <= {f.key for f in res.sections[0].fields}
+
+
+# ---- Module 6 real-machine checks ----
+from pcinsight.core.ports_info import ST_LISTENING, ST_UDP, collect_ports  # noqa: E402
+
+
+def test_ports_real_data():
+    secs = {s.key: s for s in collect_ports()}
+    for s in secs.values():
+        print(f"\n== {s.title} ({len(s.fields)}) ==")
+        for f in s.fields:
+            print(f"{f.label:44} {(f.value or f.note).splitlines()[0]}")
+            for extra in (f.value or "").splitlines()[1:]:
+                print(f"{'':44} {extra}")
+    tcp = secs["ports_tcp"].fields
+    assert tcp and all(f.status is Status.OK and f.value.startswith(ST_LISTENING) for f in tcp)
+    assert all(f.value.startswith(ST_UDP) for f in secs["ports_udp"].fields if f.status is Status.OK)
+    assert any("(PID " in f.value for f in tcp), "no listener could be mapped to a process"

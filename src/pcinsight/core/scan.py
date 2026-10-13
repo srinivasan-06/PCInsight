@@ -12,12 +12,14 @@ from .gpu_info import collect_gpus
 from .memory_info import collect_memory
 from .models import InfoSection, SystemOverview
 from .network_info import NetworkScan, collect_network
+from .ports_info import collect_ports
 from .storage_info import collect_storage
 from .system_info import collect_system_overview
 
 logger = logging.getLogger(__name__)
 
 NETWORK_PREFIXES = ("network", "net")
+PORT_PREFIXES = ("ports",)
 
 
 @dataclass
@@ -34,6 +36,9 @@ class ScanResult:
     def network_sections(self) -> list[InfoSection]:
         return self.sections_for(*NETWORK_PREFIXES)
 
+    def ports_sections(self) -> list[InfoSection]:
+        return self.sections_for(*PORT_PREFIXES)
+
     def sections_for(self, *prefixes: str) -> list[InfoSection]:
         """Sections whose key equals a prefix or starts with '<prefix>_'."""
         return [s for s in self.hardware
@@ -45,9 +50,11 @@ def run_scan(system_collector: Callable[[], SystemOverview] = collect_system_ove
              memory_collector: Callable[[], list[InfoSection]] = collect_memory,
              gpu_collector: Callable[[], list[InfoSection]] = collect_gpus,
              storage_collector: Callable[[], list[InfoSection]] = collect_storage,
-             network_collector: Callable[[], NetworkScan] = collect_network) -> ScanResult:
+             network_collector: Callable[[], NetworkScan] = collect_network,
+             ports_collector: Callable[[], list[InfoSection]] = collect_ports) -> ScanResult:
     jobs = [("CPU, motherboard and BIOS", hardware_collector), ("Memory", memory_collector),
-            ("Graphics", gpu_collector), ("Storage", storage_collector)]
+            ("Graphics", gpu_collector), ("Storage", storage_collector),
+            ("Listening ports", ports_collector)]
     hardware: list[InfoSection] = []
     errors: list[str] = []
     gateways: list[str] = []
