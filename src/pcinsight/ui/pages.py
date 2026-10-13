@@ -160,7 +160,9 @@ class DashboardPage(QWidget):
             status, ip = _val(sec, "status"), _val(sec, "ipv4")
             if not (status and status.startswith("Up") and ip) or "self-assigned" in ip.splitlines()[0]:
                 continue
-            lines.append(f"{sec.title.split(' \u2014 ')[0]}: {ip.splitlines()[0].split(' \u00b7 ')[0]}")
+            name = sec.title.split(" \u2014 ")[0]
+            first_ip = ip.splitlines()[0].split(" \u00b7 ")[0]
+            lines.append(f"{name}: {first_ip}")
             shown += 1
             if shown == 3:
                 break

@@ -24,17 +24,21 @@ ADAPTER_NOTE = ("Everything below is local configuration read from this computer
 
 NETWORK_SCRIPT = r"""
 $global:failed = @()
+# Windows often returns real data AND a harmless "not found" notice (for example "no IPv6 default route").
+# So errors are captured, never made fatal: a section only counts as failed when it returned NO data and
+# the errors were something other than "not found".
 function Get-Section($name, [scriptblock]$sb) {
-  try { return @(& $sb) } catch {
-    if ($_.CategoryInfo.Category -ne 'ObjectNotFound') { $global:failed += $name }
-    return @()
-  }
+  try { $out = @(& $sb 2>&1) } catch { $global:failed += $name; return @() }
+  $data = @($out | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
+  $bad = @($out | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and $_.CategoryInfo.Category -ne 'ObjectNotFound' })
+  if ($data.Count -eq 0 -and $bad.Count -gt 0) { $global:failed += $name }
+  return $data
 }
-$adapters = @(Get-Section 'adapters' { Get-NetAdapter -ErrorAction Stop | Select-Object Name,InterfaceDescription,InterfaceIndex,@{n='Status';e={[string]$_.Status}},@{n='LinkSpeed';e={[string]$_.LinkSpeed}},@{n='MediaType';e={[string]$_.MediaType}},@{n='PhysicalMediaType';e={[string]$_.PhysicalMediaType}},@{n='Virtual';e={[bool]$_.Virtual}},@{n='HardwareInterface';e={[bool]$_.HardwareInterface}} })
-$routes = @(Get-Section 'routes' { Get-NetRoute -DestinationPrefix '0.0.0.0/0','::/0' -ErrorAction Stop | Select-Object InterfaceIndex,@{n='Family';e={[string]$_.AddressFamily}},NextHop })
-$dns = @(Get-Section 'dns' { Get-DnsClientServerAddress -ErrorAction Stop | Select-Object InterfaceIndex,@{n='Family';e={[string]$_.AddressFamily}},@{n='Servers';e={@($_.ServerAddresses)}} })
-$dhcp = @(Get-Section 'dhcp' { Get-NetIPInterface -ErrorAction Stop | Select-Object InterfaceIndex,@{n='Family';e={[string]$_.AddressFamily}},@{n='Dhcp';e={[string]$_.Dhcp}} })
-$leases = @(Get-Section 'leases' { Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE' -ErrorAction Stop | Select-Object InterfaceIndex,DHCPEnabled,DHCPServer,@{n='LeaseObtained';e={if($_.DHCPLeaseObtained){$_.DHCPLeaseObtained.ToString('yyyy-MM-dd HH:mm')}}},@{n='LeaseExpires';e={if($_.DHCPLeaseExpires){$_.DHCPLeaseExpires.ToString('yyyy-MM-dd HH:mm')}}} })
+$adapters = @(Get-Section 'adapters' { Get-NetAdapter -IncludeHidden | Select-Object Name,InterfaceDescription,InterfaceIndex,@{n='Status';e={[string]$_.Status}},@{n='LinkSpeed';e={[string]$_.LinkSpeed}},@{n='MediaType';e={[string]$_.MediaType}},@{n='PhysicalMediaType';e={[string]$_.PhysicalMediaType}},@{n='Virtual';e={[bool]$_.Virtual}},@{n='HardwareInterface';e={[bool]$_.HardwareInterface}} })
+$routes = @(Get-Section 'routes' { Get-NetRoute -DestinationPrefix '0.0.0.0/0','::/0' | Select-Object InterfaceIndex,@{n='Family';e={[string]$_.AddressFamily}},NextHop })
+$dns = @(Get-Section 'dns' { Get-DnsClientServerAddress | Select-Object InterfaceIndex,@{n='Family';e={[string]$_.AddressFamily}},@{n='Servers';e={@($_.ServerAddresses)}} })
+$dhcp = @(Get-Section 'dhcp' { Get-NetIPInterface | Select-Object InterfaceIndex,@{n='Family';e={[string]$_.AddressFamily}},@{n='Dhcp';e={[string]$_.Dhcp}} })
+$leases = @(Get-Section 'leases' { Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE' | Select-Object InterfaceIndex,DHCPEnabled,DHCPServer,@{n='LeaseObtained';e={if($_.DHCPLeaseObtained){$_.DHCPLeaseObtained.ToString('yyyy-MM-dd HH:mm')}}},@{n='LeaseExpires';e={if($_.DHCPLeaseExpires){$_.DHCPLeaseExpires.ToString('yyyy-MM-dd HH:mm')}}} })
 [pscustomobject]@{adapters=$adapters;routes=$routes;dns=$dns;dhcp=$dhcp;leases=$leases;failed=@($global:failed)} | ConvertTo-Json -Depth 4 -Compress
 """
 
@@ -228,10 +232,7 @@ def collect_network(sources: NetworkSources | None = None) -> NetworkScan:
         ps_err = str(exc)
 
     visible = {n: rows for n, rows in ifaces.items() if not _is_loopback_only(rows)}
-    names = list(visible)
-    if ps:
-        known = {n.lower() for n in names}
-        names += [clean_value(r.get("Name")) for k, r in ps.adapters.items() if k not in known]
+    names = list(visible)   # psutil is the single source of the list; PowerShell data only enriches it
 
     def info(name: str) -> dict:
         ad = ps.adapters.get(name.lower()) if ps else None
@@ -334,16 +335,26 @@ def collect_network(sources: NetworkSources | None = None) -> NetworkScan:
             need_ps("leases")
             return ps.leases.get(idx, {})
 
+        def no_lease_note(r: dict) -> str:
+            """'' when a DHCP lease exists; otherwise the honest reason there is none."""
+            if clean_value(r.get("DHCPEnabled")).lower() == "true":
+                return ""
+            if ps.dhcp.get((idx, "IPv4")) == "Enabled":
+                return "DHCP is enabled, but Windows has no lease for this adapter (it may be disconnected)."
+            return "This adapter is not using DHCP."
+
         def dhcp_server() -> Reading:
             r = lease_row()
-            if clean_value(r.get("DHCPEnabled")).lower() != "true":
-                return Reading("", SRC_NET, "This adapter is not using DHCP.")
+            note = no_lease_note(r)
+            if note:
+                return Reading("", SRC_NET, note)
             return Reading(clean_value(r.get("DHCPServer")), SRC_NET)
 
         def dhcp_lease() -> Reading:
             r = lease_row()
-            if clean_value(r.get("DHCPEnabled")).lower() != "true":
-                return Reading("", SRC_NET, "This adapter is not using DHCP.")
+            note = no_lease_note(r)
+            if note:
+                return Reading("", SRC_NET, note)
             got, exp = clean_value(r.get("LeaseObtained")), clean_value(r.get("LeaseExpires"))
             if not got and not exp:
                 return Reading("", SRC_NET, "No lease times reported.")

@@ -30,3 +30,8 @@ Launch; click all 7 items; resize/maximize; toggle theme; confirm no console err
 - test_ui_scan.py: network page, local vs connectivity separation, on-demand only, failure recovery, filter, close during tests.
 ## Module 5 real-machine (Windows)
 - `python -m pytest tests/test_system_integration.py -s`; compare with `ipconfig /all` (IPv4, mask, gateway, DNS, DHCP, MAC) and Settings > Network & internet.
+
+## Cross-version rule (added after a Python 3.11 failure)
+- Before every delivery the full suite runs on Python 3.10, 3.11 and 3.12.
+- tests/test_source_compat.py rejects f-string syntax that only 3.12 accepts.
+- tests/test_network_script.py runs the real network PowerShell script against stand-in cmdlets (skipped if no PowerShell is installed).

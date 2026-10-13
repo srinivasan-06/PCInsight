@@ -5,7 +5,7 @@ Windows desktop app to inspect hardware, OS, network configuration and local lis
 **Status:** Modules 1-5 implemented. Press "Scan now" to read computer name, Windows edition/version/build, architecture, manufacturer/model, uptime, plus CPU, motherboard, BIOS, memory, graphics, storage and network configuration. Network connectivity tests are optional and start only when you press a button. Listening and ports arrive in later modules.
 
 ## Requirements
-- Windows 10/11, Python 3.10-3.13 (64-bit) from https://www.python.org/downloads/ (tick "Add python.exe to PATH")
+- Windows 10/11, Python 3.10, 3.11 or 3.12 (64-bit; all three are tested) from https://www.python.org/downloads/ (tick "Add python.exe to PATH")
 
 ## Setup (PowerShell, inside the project folder)
 ```powershell

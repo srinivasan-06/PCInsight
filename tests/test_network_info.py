@@ -143,14 +143,57 @@ def test_adapter_missing_from_powershell_data():
     assert a.get("gateway").status is Status.UNAVAILABLE and "not matched" in a.get("gateway").note
 
 
-def test_powershell_only_adapter_disabled_is_listed():
-    ps = ps_root(adapters=[eth_ps(1, "Ethernet"), eth_ps(9, "Ethernet 2", "Disabled", MacAddress="AA-AA-AA-AA-AA-AA")])
+def test_powershell_only_adapters_are_not_added():
+    # Get-NetAdapter -IncludeHidden also returns hidden miniports; they must not flood the list.
+    ps = ps_root(adapters=[eth_ps(1, "Ethernet"), eth_ps(8, "WAN Miniport (IP)", "Not Present", Virtual=True, HardwareInterface=False)])
     secs, _ = collect(ps=ps)
     titles = [s.title.split(" \u2014 ")[0] for k, s in secs.items() if k.startswith("net_adapter")]
-    assert titles == ["Ethernet", "Ethernet 2"]
-    d = adapter(secs, 2)
-    assert d.get("status").value == "Disabled" and d.get("mac").value == "AA-AA-AA-AA-AA-AA"
-    assert d.get("ipv4").status is Status.EMPTY
+    assert titles == ["Ethernet"]
+    assert secs["network"].get("adapters").value == "1 adapter (1 up)"
+
+
+def test_hidden_adapter_described_when_powershell_knows_it():
+    rows = [("mac", "58-A0-23-A9-63-03", ""), ("ipv4", "169.254.129.123", "255.255.0.0")]
+    ps = ps_root(adapters=[eth_ps(9, "Local Area Connection* 1", "Disconnected", LinkSpeed="0 bps",
+                                  InterfaceDescription="Microsoft Wi-Fi Direct Virtual Adapter",
+                                  PhysicalMediaType="Unspecified", MediaType="802.3", Virtual=True, HardwareInterface=False)])
+    secs, _ = collect(ifaces={"Local Area Connection* 1": rows}, stats={"Local Area Connection* 1": (False, 0)}, ps=ps)
+    a = adapter(secs)
+    assert a.title.endswith("Microsoft Wi-Fi Direct Virtual Adapter")
+    assert a.get("adapter_class").value == "Virtual / software adapter"
+    assert a.get("gateway").status is Status.EMPTY            # matched to Windows data: genuinely none
+
+
+def test_dns_servers_single_string_and_null_shapes_from_real_powershell():
+    # PowerShell unrolls 1-element arrays to a bare string and empty arrays to null.
+    ps = full_ps()
+    ps[0]["dns"] = [{"InterfaceIndex": 7, "Family": "IPv4", "Servers": "192.168.1.1"},
+                    {"InterfaceIndex": 7, "Family": "IPv6", "Servers": None}]
+    assert adapter(collect(ps=ps)[0]).get("dns").value == "192.168.1.1"
+
+
+def test_wifi_connected_with_gateway_like_the_real_machine():
+    rows = [("mac", "58-A0-23-A9-63-02", ""), ("ipv4", "192.168.1.3", "255.255.255.0")]
+    ps = ps_root(adapters=[eth_ps(5, "Wi-Fi", "Up", PhysicalMediaType="Native 802.11", MediaType="Native 802.11")],
+                 routes=[{"InterfaceIndex": 5, "Family": "IPv4", "NextHop": "192.168.1.1"}],
+                 dns=[{"InterfaceIndex": 5, "Family": "IPv4", "Servers": "192.168.1.1"}],
+                 dhcp=[{"InterfaceIndex": 5, "Family": "IPv4", "Dhcp": "Enabled"}],
+                 leases=[{"InterfaceIndex": 5, "DHCPEnabled": True, "DHCPServer": "192.168.1.1",
+                          "LeaseObtained": "2026-10-13 04:23", "LeaseExpires": "2026-10-14 04:23"}])
+    secs, scan = collect(ifaces={"Wi-Fi": rows}, stats={"Wi-Fi": (True, 400)}, ps=ps)
+    a = adapter(secs)
+    assert a.get("gateway").value == "192.168.1.1 (IPv4)" and a.get("dns").value == "192.168.1.1"
+    assert scan.gateways == ["192.168.1.1"]
+
+
+def test_dhcp_enabled_but_no_lease_is_not_called_unused():
+    ps = full_ps()
+    ps[0]["leases"] = []                                       # e.g. a disconnected adapter: no lease row
+    a = adapter(collect(ps=ps)[0])
+    assert a.get("dhcp").value == "Enabled (IPv4)"
+    for key in ("dhcp_server", "dhcp_lease"):
+        f = a.get(key)
+        assert f.status is Status.EMPTY and "enabled, but Windows has no lease" in f.note and "not using" not in f.note
 
 
 def test_dhcp_disabled_static_address():
