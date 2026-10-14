@@ -1,17 +1,22 @@
 """Pages for each navigation item."""
 from __future__ import annotations
 
+import os
 import platform
 import sys
+from dataclasses import dataclass
 
 from PySide6 import __version__ as pyside_version
-from PySide6.QtCore import qVersion
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton, QScrollArea,
+from PySide6.QtCore import QStandardPaths, Qt, QUrl, qVersion
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton, QScrollArea,
                                QVBoxLayout, QWidget)
 
 from ..core.models import Status, format_timestamp
 from ..core.scan import ScanResult
+from ..report import ReportError, ReportOptions, default_report_filename, write_report
 from ..version import APP_NAME, __version__
+from .scan_controller import ScanController
 from .components import EmptyState, FieldTable, InfoCard, PageHeader, ReflowGrid
 
 NOT_SCANNED = "Not scanned yet"
@@ -421,6 +426,182 @@ class NetworkPage(SectionsPage):
         self.render(lines, sections, errors, LEGEND)
 
 
+@dataclass
+class ReportOutcome:
+    ok: bool
+    path: str = ""
+    message: str = ""
+
+
+def _qt_save_dialog(default_path: str) -> str:
+    path, _ = QFileDialog.getSaveFileName(None, "Save PCInsight report", default_path, "PDF files (*.pdf)")
+    return path
+
+
+def _qt_open_path(path: str) -> None:
+    QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+
+
+class ReportsPage(QWidget):
+    """Choose what to include, pick a save location, create the PDF. All saving problems are explained."""
+
+    def __init__(self):
+        super().__init__()
+        self.save_dialog = _qt_save_dialog          # replaceable (tests)
+        self.open_path = _qt_open_path              # replaceable (tests)
+        self._result: ScanResult | None = None
+        self._connectivity = None
+        self._job: tuple | None = None
+        self.last_path = ""
+        self.controller = ScanController(self._run_job, self)
+        self.controller.scan_finished.connect(self._on_done)
+        self.controller.scan_failed.connect(self._on_crashed)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(20)
+        lay.addWidget(PageHeader("Reports", "Save the scan results as a professional PDF report."))
+
+        card = QFrame()
+        card.setObjectName("Card")
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(20, 18, 20, 18)
+        cl.setSpacing(10)
+        self.scan_label = QLabel("")
+        self.scan_label.setObjectName("Muted")
+        self.scan_label.setWordWrap(True)
+        cl.addWidget(self.scan_label)
+        title = QLabel("Include in the report")
+        title.setObjectName("SectionTitle")
+        cl.addWidget(title)
+        self.include_network = QCheckBox("Network configuration")
+        self.include_ports = QCheckBox("Local listening ports")
+        self.include_connectivity = QCheckBox("Connectivity test results (only if you ran them)")
+        for box in (self.include_network, self.include_ports, self.include_connectivity):
+            box.setChecked(True)
+            cl.addWidget(box)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Paper size"))
+        self.paper = QComboBox()
+        self.paper.addItems(["A4", "Letter"])
+        self.paper.setAccessibleName("Paper size")
+        row.addWidget(self.paper)
+        row.addStretch()
+        cl.addLayout(row)
+        privacy = QLabel("Reports can contain your computer name, IP addresses and MAC addresses. "
+                         "They are saved only where you choose and are never uploaded.")
+        privacy.setObjectName("Muted")
+        privacy.setWordWrap(True)
+        cl.addWidget(privacy)
+        actions = QHBoxLayout()
+        self.save_button = QPushButton("Save PDF report\u2026")
+        self.save_button.setObjectName("Primary")
+        self.save_button.clicked.connect(self._on_save_clicked)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        self.progress.setTextVisible(False)
+        self.progress.setFixedWidth(140)
+        self.progress.setVisible(False)
+        actions.addWidget(self.save_button)
+        actions.addWidget(self.progress)
+        actions.addStretch()
+        cl.addLayout(actions)
+        self.message = QLabel("")
+        self.message.setWordWrap(True)
+        self.message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.message.setVisible(False)
+        cl.addWidget(self.message)
+        open_row = QHBoxLayout()
+        self.open_pdf_button = QPushButton("Open PDF")
+        self.open_folder_button = QPushButton("Open folder")
+        for b in (self.open_pdf_button, self.open_folder_button):
+            b.setObjectName("Ghost")
+            b.setVisible(False)
+            open_row.addWidget(b)
+        open_row.addStretch()
+        cl.addLayout(open_row)
+        self.open_pdf_button.clicked.connect(lambda: self.open_path(self.last_path))
+        self.open_folder_button.clicked.connect(lambda: self.open_path(os.path.dirname(self.last_path)))
+        lay.addWidget(card)
+        lay.addStretch()
+        self._refresh_state()
+
+    # -- data from the main window ------------------------------------------------------------------------
+    def set_scan(self, result: ScanResult) -> None:
+        self._result = result
+        self._refresh_state()
+
+    def set_connectivity(self, res) -> None:
+        self._connectivity = res
+        self._refresh_state()
+
+    def _refresh_state(self) -> None:
+        running = self.controller.is_running
+        if self._result is None:
+            self.scan_label.setText("No scan yet. Press \"Scan now\" first; the report contains only real scan results.")
+        else:
+            conn = (f" Connectivity tests from {format_timestamp(self._connectivity.ran_at)} will be included."
+                    if self._connectivity is not None else " Connectivity tests were not run.")
+            self.scan_label.setText(f"The report will use the scan from {format_timestamp(self._result.scanned_at)}." + conn)
+        self.save_button.setEnabled(self._result is not None and not running)
+        self.save_button.setToolTip("" if self._result is not None else "Run a scan first.")
+
+    def options(self) -> ReportOptions:
+        return ReportOptions(paper=self.paper.currentText(), include_network=self.include_network.isChecked(),
+                             include_ports=self.include_ports.isChecked(),
+                             include_connectivity=self.include_connectivity.isChecked())
+
+    # -- saving ----------------------------------------------------------------------------------------------
+    def _show(self, text: str, kind: str = "") -> None:
+        self.message.setObjectName(kind)
+        self.message.style().unpolish(self.message)
+        self.message.style().polish(self.message)
+        self.message.setText(text)
+        self.message.setVisible(True)
+
+    def _on_save_clicked(self) -> None:
+        if self._result is None or self.controller.is_running:
+            return
+        docs = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation) or os.path.expanduser("~")
+        path = self.save_dialog(os.path.join(docs, default_report_filename()))
+        self.open_pdf_button.setVisible(False)
+        self.open_folder_button.setVisible(False)
+        if not path:
+            self._show("Save cancelled. No file was created.", "Muted")
+            return
+        self._job = (path, self._result, self._connectivity, self.options())
+        self._show("Creating the report\u2026", "Muted")
+        self.progress.setVisible(True)
+        if self.controller.start():
+            self.save_button.setEnabled(False)
+
+    def _run_job(self) -> ReportOutcome:
+        path, result, connectivity, options = self._job  # type: ignore[misc]
+        try:
+            return ReportOutcome(True, write_report(path, result, connectivity, options))
+        except ReportError as exc:
+            return ReportOutcome(False, message=str(exc))
+
+    def _on_done(self, outcome: ReportOutcome) -> None:
+        self.progress.setVisible(False)
+        if outcome.ok:
+            self.last_path = outcome.path
+            self._show(f"Saved: {outcome.path}", "Success")
+            self.open_pdf_button.setVisible(True)
+            self.open_folder_button.setVisible(True)
+        else:
+            self._show(f"Could not save the report. {outcome.message}", "Error")
+        self._refresh_state()
+
+    def _on_crashed(self, message: str) -> None:
+        self.progress.setVisible(False)
+        self._show(f"Could not save the report. {message}. Nothing was saved; please try again.", "Error")
+        self._refresh_state()
+
+    def shutdown(self) -> None:
+        self.controller.shutdown()
+
+
 class AboutPage(QWidget):
     def __init__(self):
         super().__init__()
@@ -440,10 +621,7 @@ def build_pages() -> list[tuple[str, QWidget]]:
         ("Hardware", HardwarePage()),
         ("Network", NetworkPage()),
         ("Port Analyzer", PortsPage()),
-        ("Reports", PlaceholderPage(
-            "Reports", "Export scan results as a PDF report.",
-            "No report available",
-            "PDF reports arrive in Module 7 and need a completed scan.", "Coming in Module 7")),
+        ("Reports", ReportsPage()),
         ("Settings", PlaceholderPage(
             "Settings", "Theme, report preferences, important ports and data retention.",
             "Settings not available yet",

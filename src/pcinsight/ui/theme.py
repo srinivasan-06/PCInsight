@@ -4,13 +4,13 @@ from __future__ import annotations
 LIGHT: dict[str, str] = {
     "bg": "#F3F5F9", "surface": "#FFFFFF", "border": "#D8DEE9",
     "text": "#111827", "muted": "#4B5563", "accent": "#2563EB",
-    "accent_text": "#FFFFFF", "sidebar": "#111827", "sidebar_text": "#D1D9E6",
+    "accent_text": "#FFFFFF", "ok": "#166534", "danger": "#B91C1C", "sidebar": "#111827", "sidebar_text": "#D1D9E6",
     "sidebar_hover": "#1B2538", "sidebar_active": "#26345A", "badge_bg": "#E5EAF3",
 }
 DARK: dict[str, str] = {
     "bg": "#0F172A", "surface": "#1E293B", "border": "#334155",
     "text": "#F1F5F9", "muted": "#AAB7CA", "accent": "#60A5FA",
-    "accent_text": "#0B1220", "sidebar": "#0A0F1C", "sidebar_text": "#CBD5E1",
+    "accent_text": "#0B1220", "ok": "#4ADE80", "danger": "#F87171", "sidebar": "#0A0F1C", "sidebar_text": "#CBD5E1",
     "sidebar_hover": "#141C30", "sidebar_active": "#22304F", "badge_bg": "#2B3A52",
 }
 THEMES = {"light": LIGHT, "dark": DARK}
@@ -43,12 +43,16 @@ QPushButton#ThemeButton:hover {{ background: {t['sidebar_hover']}; }}
 #Card, #EmptyPanel, #ScanBar {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 10px; }}
 QPushButton#Primary {{ background: {t['accent']}; color: {t['accent_text']}; border: none;
     border-radius: 6px; padding: 7px 16px; font-weight: 600; }}
+QCheckBox, QComboBox {{ color: {t['text']}; }}
+QComboBox {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 6px; padding: 5px 8px; }}
 QPushButton#Primary:disabled {{ background: {t['badge_bg']}; color: {t['muted']}; }}
 QProgressBar {{ background: {t['badge_bg']}; border: none; border-radius: 4px; max-height: 8px; }}
 QProgressBar::chunk {{ background: {t['accent']}; border-radius: 4px; }}
 QLabel#SectionTitle {{ font-size: 12pt; font-weight: 600; }}
 QLabel#FieldLabel {{ color: {t['muted']}; font-weight: 600; }}
 QLabel#ValueMissing {{ color: {t['muted']}; font-style: italic; }}
+QLabel#Success {{ color: {t['ok']}; font-weight: 600; }}
+QLabel#Error {{ color: {t['danger']}; font-weight: 600; }}
 QLabel#Detail {{ color: {t['muted']}; font-size: 8.5pt; }}
 QLabel#Summary {{ font-size: 10pt; }}
 QPushButton#Ghost {{ background: transparent; color: {t['accent']}; border: 1px solid {t['border']};

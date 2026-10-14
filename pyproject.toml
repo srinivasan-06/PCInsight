@@ -7,16 +7,19 @@ name = "pcinsight"
 version = "0.1.0"
 description = "PCInsight - PC hardware and network analyzer for Windows"
 requires-python = ">=3.10"
-dependencies = ["PySide6>=6.6", "psutil>=5.9"]
+dependencies = ["PySide6>=6.6", "psutil>=5.9", "reportlab>=4.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "pypdf>=4.0"]
 
 [project.gui-scripts]
 pcinsight = "pcinsight.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+pcinsight = ["assets/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -136,3 +136,4 @@ def test_ports_real_data():
     assert tcp and all(f.status is Status.OK and f.value.startswith(ST_LISTENING) for f in tcp)
     assert all(f.value.startswith(ST_UDP) for f in secs["ports_udp"].fields if f.status is Status.OK)
     assert any("(PID " in f.value for f in tcp), "no listener could be mapped to a process"
+

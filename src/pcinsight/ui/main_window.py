@@ -91,6 +91,7 @@ class MainWindow(QMainWindow):
         net.run_button.clicked.connect(self.connectivity_controller.start)
         self.connectivity_controller.scan_started.connect(net.set_connectivity_running)
         self.connectivity_controller.scan_finished.connect(net.show_connectivity)
+        self.connectivity_controller.scan_finished.connect(self.pages["Reports"].set_connectivity)
         self.connectivity_controller.scan_failed.connect(net.set_connectivity_failed)
         self.apply_theme(theme)
 
@@ -113,6 +114,7 @@ class MainWindow(QMainWindow):
         self.pages["Hardware"].show_result(result)
         self.pages["Network"].show_result(result)
         self.pages["Port Analyzer"].show_result(result)
+        self.pages["Reports"].set_scan(result)
         self._gateways = list(getattr(result, "gateways", []))
 
     def _on_scan_failed(self, message: str) -> None:
@@ -124,6 +126,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
         self.controller.shutdown()
         self.connectivity_controller.shutdown()
+        self.pages["Reports"].shutdown()
         super().closeEvent(event)
 
     def apply_theme(self, name: str) -> None:

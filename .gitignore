@@ -7,3 +7,5 @@ dist/
 *.egg-info/
 .pytest_cache/
 *.log
+test-output.txt
+integration-output.txt

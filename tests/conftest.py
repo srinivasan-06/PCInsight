@@ -27,6 +27,8 @@ def _cleanup_windows(qapp):
     yield
     from shiboken6 import delete, isValid
     for w in QApplication.topLevelWidgets():
+        if not isValid(w):          # Qt may already have deleted it with its owner (e.g. a combo box popup)
+            continue
         w.close()
         if isValid(w):
             delete(w)  # destroy now; leftovers make every later stylesheet change slower

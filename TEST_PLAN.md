@@ -41,3 +41,11 @@ Launch; click all 7 items; resize/maximize; toggle theme; confirm no console err
 - test_ui_scan.py: ports page, dashboard card, other pages exclude port sections, filter, empty state wording.
 ## Module 6 real-machine (Windows)
 - `python -m pytest tests/test_system_integration.py -s`; compare with `netstat -ano -p tcp | findstr LISTENING` and `Get-NetTCPConnection -State Listen` (PIDs) plus Task Manager > Details (PID -> name).
+
+## Module 7 automated
+- test_report_pdf.py: required content, metadata, limitations text, unavailable table, header/footer/"Page X of Y" on every page, repeating table headers, long names never truncated, A4/Letter, section options, connectivity run/not-run/left-out, nothing fabricated for a minimal scan, no None/null/nan, scan errors listed, special characters literal, unsupported characters replaced with a warning, 800-row report time, every status combination.
+- test_report_writer.py: valid PDF, extension added, unicode paths, atomic overwrite, no path, folder chosen, missing folder, permission denied / file open in viewer, disk full, other OS errors, too-long name, build failure keeps the old file, no personal data in the default file name.
+- test_ui_reports.py: disabled before a scan, save, default name, cancel, errors explained + retry, crash contained, options reach the PDF, connectivity included only if run, repeated saves, Open buttons, newest scan used, close while saving, no double start, privacy text.
+- test_report_end_to_end.py: real scan -> real PDF (any OS).
+## Module 7 on your PC
+- test.bat, then Reports page: save a report, open it, compare with the Hardware/Network/Port pages; try cancelling, saving to a read-only folder, and overwriting a report that is open in a PDF viewer.
