@@ -33,3 +33,12 @@ def _cleanup_windows(qapp):
         if isValid(w):
             delete(w)  # destroy now; leftovers make every later stylesheet change slower
     qapp.processEvents()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_data_dir(tmp_path, monkeypatch):
+    """Every test gets its own empty data folder, so no test can read or damage real settings/history/logs."""
+    monkeypatch.setenv("PCINSIGHT_DATA_DIR", str(tmp_path / "pcinsight-data"))
+    yield
+    from pcinsight.core.diagnostics import configure_logging
+    configure_logging(False, None)     # release any log file handle before the folder is removed

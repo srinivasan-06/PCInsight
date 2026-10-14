@@ -1,5 +1,6 @@
 # Changelog
 ## 0.1.0 - Unreleased
+- Module 8: settings (theme, report preferences, important ports, retention, diagnostic logging), local scan history in SQLite with reopen/delete/retention, data-folder handling.
 - Module 7: PDF reports (ReportLab, bundled DejaVu fonts), safe saving, Reports page; setup.bat / run.bat / test.bat.
 - Module 6: local listening-port analyzer (TCP listeners, UDP endpoints, process mapping, important-port list), Port Analyzer page and dashboard card.
 - Module 5 fixes: Python 3.10/3.11 compatibility; gateway/DNS no longer lost when Windows reports a harmless 'not found'; DHCP wording; hidden adapters described.

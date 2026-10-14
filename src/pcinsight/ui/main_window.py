@@ -1,27 +1,44 @@
 """Main window: sidebar navigation, scan status bar and stacked pages."""
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QHBoxLayout, QLabel, QMainWindow,
                                QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
-from ..core.models import format_timestamp
 from ..core.connectivity import run_connectivity_checks
+from ..core.diagnostics import configure_logging
+from ..core.history import HistoryError, HistoryStore
+from ..core.models import format_timestamp
+from ..core.ports_info import collect_ports
 from ..core.scan import run_scan
-from ..version import APP_NAME
-from .scan_controller import ScanController
+from ..core.settings import SettingsStore
+from ..version import APP_NAME, __version__
 from .components import ScanStatusBar
 from .pages import build_pages
+from .scan_controller import ScanController
 from .theme import THEMES, build_stylesheet
+
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, theme: str = "light", scan_fn=None, connectivity_fn=None):
+    def __init__(self, theme: str | None = None, scan_fn=None, connectivity_fn=None,
+                 settings_store: SettingsStore | None = None, history_store: HistoryStore | None = None):
         super().__init__()
+        self.settings_store = settings_store or SettingsStore()
+        self.history = history_store or HistoryStore()
+        self.log_dir = self.settings_store.path.parent / "logs"
+        try:
+            configure_logging(self.settings_store.settings.diagnostic_logging, self.log_dir)
+        except OSError:
+            logger.warning("The diagnostic log file could not be created")
+        theme = theme or self.settings_store.settings.theme
         self.setWindowTitle(APP_NAME)
         self.resize(1180, 760)
         self.setMinimumSize(820, 560)
         self.theme_name = theme
-        self.controller = ScanController(scan_fn or run_scan, self)
+        self.controller = ScanController(scan_fn or self._default_scan, self)
         self._gateways: list[str] = []
         self.connectivity_controller = ScanController(
             connectivity_fn or (lambda: run_connectivity_checks(list(self._gateways))), self)
@@ -59,7 +76,7 @@ class MainWindow(QMainWindow):
         self.nav_group.setExclusive(True)
         self.nav_buttons: list[QPushButton] = []
         self.pages: dict[str, QWidget] = {}
-        for i, (name, page) in enumerate(build_pages()):
+        for i, (name, page) in enumerate(build_pages(self.settings_store, self.history)):
             self.pages[name] = page
             self.stack.addWidget(page)
             btn = QPushButton(name)
@@ -93,7 +110,20 @@ class MainWindow(QMainWindow):
         self.connectivity_controller.scan_finished.connect(net.show_connectivity)
         self.connectivity_controller.scan_finished.connect(self.pages["Reports"].set_connectivity)
         self.connectivity_controller.scan_failed.connect(net.set_connectivity_failed)
+        # settings, history and reports talk to each other through the window
+        settings_page, reports = self.pages["Settings"], self.pages["Reports"]
+        settings_page.theme_changed.connect(self.apply_theme)
+        settings_page.settings_changed.connect(reports.apply_defaults)
+        settings_page.history_changed.connect(reports.refresh_history)
+        reports.load_requested.connect(self.load_saved_scan)
         self.apply_theme(theme)
+        self._trim_history_quietly()
+
+    # -- scanning -----------------------------------------------------------------------------------------------
+    def _default_scan(self):
+        """The real scan. The important-port list is read from the settings at the moment the scan starts."""
+        return run_scan(ports_collector=lambda: collect_ports(
+            important_ports=self.settings_store.settings.important_ports))
 
     def _on_scan_started(self) -> None:
         self.scan_bar.rescan_button.setEnabled(False)
@@ -101,21 +131,64 @@ class MainWindow(QMainWindow):
         self.scan_bar.status_label.setText("Scanning\u2026")
         self.pages["Dashboard"].set_scanning()
 
-    def _on_scan_finished(self, result) -> None:
+    def _display(self, result, status_text: str) -> None:
         self.scan_bar.progress.setVisible(False)
         self.scan_bar.rescan_button.setEnabled(True)
-        self.scan_bar.rescan_button.setText("Rescan")
-        text = f"Last scan: {format_timestamp(result.scanned_at)}"
-        errors = getattr(result, "errors", [])
-        if errors:
-            text += f"  \u00b7  {len(errors)} problem(s): " + "; ".join(errors)
-        self.scan_bar.status_label.setText(text)
+        self.scan_bar.status_label.setText(status_text)
         self.pages["Dashboard"].show_result(result)
         self.pages["Hardware"].show_result(result)
         self.pages["Network"].show_result(result)
         self.pages["Port Analyzer"].show_result(result)
         self.pages["Reports"].set_scan(result)
         self._gateways = list(getattr(result, "gateways", []))
+
+    def _on_scan_finished(self, result) -> None:
+        self.scan_bar.rescan_button.setText("Rescan")
+        text = f"Last scan: {format_timestamp(result.scanned_at)}"
+        errors = getattr(result, "errors", [])
+        if errors:
+            text += f"  \u00b7  {len(errors)} problem(s): " + "; ".join(errors)
+        self._display(result, text)
+        note = self._save_history(result)
+        if note:
+            self.scan_bar.status_label.setText(f"{text}  \u00b7  {note}")
+        self.pages["Reports"].refresh_history()
+        self.pages["Settings"].refresh_history_info()
+
+    def _save_history(self, result) -> str:
+        """Save the scan if history is on. Never raises: a history problem must not spoil a scan."""
+        s = self.settings_store.settings
+        if not s.history_enabled:
+            return ""
+        try:
+            self.history.save(result, __version__)
+            self.history.apply_retention(s.retention_days, s.retention_max_scans)
+        except HistoryError as exc:
+            return f"History not saved: {exc}"
+        except Exception as exc:  # noqa: BLE001 - boundary
+            logger.warning("Saving the scan history failed: %s", type(exc).__name__)
+            return f"History not saved ({type(exc).__name__})."
+        return ""
+
+    def _trim_history_quietly(self) -> None:
+        s = self.settings_store.settings
+        try:
+            self.history.apply_retention(s.retention_days, s.retention_max_scans)
+        except Exception as exc:  # noqa: BLE001 - startup must never fail because of the history
+            logger.warning("Trimming the scan history at startup failed: %s", type(exc).__name__)
+        self.pages["Reports"].refresh_history()
+        self.pages["Settings"].refresh_history_info()
+
+    def load_saved_scan(self, scan_id: int) -> None:
+        """Show an old scan everywhere (marked clearly as not live). It is not saved to the history again."""
+        try:
+            result = self.history.load(scan_id)
+        except HistoryError as exc:
+            self.pages["Reports"].show_history_error(str(exc))
+            return
+        self._display(result, f"Viewing a saved scan from {format_timestamp(result.scanned_at)} (not live). "
+                              "Press \"Scan now\" for fresh data.")
+        self.nav_buttons[0].click()
 
     def _on_scan_failed(self, message: str) -> None:
         self.scan_bar.progress.setVisible(False)
@@ -129,6 +202,7 @@ class MainWindow(QMainWindow):
         self.pages["Reports"].shutdown()
         super().closeEvent(event)
 
+    # -- theme --------------------------------------------------------------------------------------------------------
     def apply_theme(self, name: str) -> None:
         self.theme_name = name
         app = QApplication.instance()
@@ -137,4 +211,7 @@ class MainWindow(QMainWindow):
         self.theme_button.setText("Switch to dark theme" if name == "light" else "Switch to light theme")
 
     def toggle_theme(self) -> None:
-        self.apply_theme("dark" if self.theme_name == "light" else "light")
+        name = "dark" if self.theme_name == "light" else "light"
+        self.apply_theme(name)
+        self.settings_store.update(theme=name)
+        self.pages["Settings"].refresh()

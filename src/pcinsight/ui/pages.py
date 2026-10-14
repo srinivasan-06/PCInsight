@@ -7,16 +7,21 @@ import sys
 from dataclasses import dataclass
 
 from PySide6 import __version__ as pyside_version
-from PySide6.QtCore import QStandardPaths, Qt, QUrl, qVersion
+from PySide6.QtCore import QStandardPaths, Qt, QUrl, Signal, qVersion
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton, QScrollArea,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QHeaderView, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton, QScrollArea,
+                               QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
+from ..core.common import format_bytes
+from ..core.history import HistoryError, HistoryStore
 from ..core.models import Status, format_timestamp
+from ..core.settings import SettingsStore
 from ..core.scan import ScanResult
 from ..report import ReportError, ReportOptions, default_report_filename, write_report
 from ..version import APP_NAME, __version__
+from .dialogs import ask_confirmation
 from .scan_controller import ScanController
+from .settings_page import SettingsPage
 from .components import EmptyState, FieldTable, InfoCard, PageHeader, ReflowGrid
 
 NOT_SCANNED = "Not scanned yet"
@@ -443,10 +448,15 @@ def _qt_open_path(path: str) -> None:
 
 
 class ReportsPage(QWidget):
-    """Choose what to include, pick a save location, create the PDF. All saving problems are explained."""
+    """Choose what to include, pick a save location, create the PDF. All saving problems are explained.
+    Also lists saved scans (the local history) so an old scan can be reopened."""
 
-    def __init__(self):
+    load_requested = Signal(int)
+
+    def __init__(self, settings_store: SettingsStore | None = None, history: HistoryStore | None = None):
         super().__init__()
+        self.settings_store, self.history = settings_store, history
+        self.confirm = ask_confirmation             # replaceable (tests)
         self.save_dialog = _qt_save_dialog          # replaceable (tests)
         self.open_path = _qt_open_path              # replaceable (tests)
         self._result: ScanResult | None = None
@@ -523,8 +533,136 @@ class ReportsPage(QWidget):
         self.open_pdf_button.clicked.connect(lambda: self.open_path(self.last_path))
         self.open_folder_button.clicked.connect(lambda: self.open_path(os.path.dirname(self.last_path)))
         lay.addWidget(card)
+
+        # -- saved scans (local history) --------------------------------------------------------------------
+        hcard = QFrame()
+        hcard.setObjectName("Card")
+        hl = QVBoxLayout(hcard)
+        hl.setContentsMargins(20, 18, 20, 18)
+        hl.setSpacing(10)
+        htitle = QLabel("Saved scans")
+        htitle.setObjectName("SectionTitle")
+        hl.addWidget(htitle)
+        self.history_note = QLabel("")
+        self.history_note.setObjectName("Muted")
+        self.history_note.setWordWrap(True)
+        hl.addWidget(self.history_note)
+        self.history_table = QTableWidget(0, 4)
+        self.history_table.setHorizontalHeaderLabels(["Scan time", "Computer", "Problems", "Size"])
+        self.history_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.history_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.history_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.history_table.verticalHeader().setVisible(False)
+        header = self.history_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)   # never cut off the scan time
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.history_table.setMinimumHeight(150)
+        self.history_table.setAccessibleName("Saved scans")
+        self.history_table.itemSelectionChanged.connect(self._history_selection_changed)
+        hl.addWidget(self.history_table)
+        hrow = QHBoxLayout()
+        self.load_button = QPushButton("Open selected scan")
+        self.load_button.setObjectName("Primary")
+        self.delete_scan_button = QPushButton("Delete selected scan")
+        self.delete_scan_button.setObjectName("Ghost")
+        hrow.addWidget(self.load_button)
+        hrow.addWidget(self.delete_scan_button)
+        hrow.addStretch()
+        hl.addLayout(hrow)
+        self.history_message = QLabel("")
+        self.history_message.setWordWrap(True)
+        self.history_message.setVisible(False)
+        hl.addWidget(self.history_message)
+        self.load_button.clicked.connect(self._on_open_scan)
+        self.delete_scan_button.clicked.connect(self._on_delete_scan)
+        lay.addWidget(hcard)
+        hcard.setVisible(history is not None)
         lay.addStretch()
+        self.apply_defaults()
+        self.refresh_history()
         self._refresh_state()
+
+    # -- defaults from Settings -----------------------------------------------------------------------------
+    def apply_defaults(self) -> None:
+        if self.settings_store is None:
+            return
+        s = self.settings_store.settings
+        self.include_network.setChecked(s.report_include_network)
+        self.include_ports.setChecked(s.report_include_ports)
+        self.include_connectivity.setChecked(s.report_include_connectivity)
+        self.paper.setCurrentText(s.paper)
+
+    # -- saved scans ---------------------------------------------------------------------------------------------
+    def _history_msg(self, text: str, kind: str = "Muted") -> None:
+        self.history_message.setObjectName(kind)
+        self.history_message.style().unpolish(self.history_message)
+        self.history_message.style().polish(self.history_message)
+        self.history_message.setText(text)
+        self.history_message.setVisible(bool(text))
+
+    def show_history_error(self, text: str) -> None:
+        self._history_msg(text, "Error")
+
+    def refresh_history(self) -> None:
+        if self.history is None:
+            return
+        self.history_table.setRowCount(0)
+        enabled = self.settings_store is None or self.settings_store.settings.history_enabled
+        try:
+            entries = self.history.list()
+        except HistoryError as exc:
+            self.history_note.setText(f"Scan history is not available: {exc}")
+            self._history_selection_changed()
+            return
+        for e in entries:
+            row = self.history_table.rowCount()
+            self.history_table.insertRow(row)
+            cells = [format_timestamp(e.scanned_at), e.computer or "\u2014", str(e.problems), format_bytes(e.size_bytes)]
+            for col, text in enumerate(cells):
+                item = QTableWidgetItem(text)
+                item.setData(Qt.ItemDataRole.UserRole, e.id)
+                self.history_table.setItem(row, col, item)
+        parts = [f"{len(entries)} saved scan{'s' if len(entries) != 1 else ''}."
+                 if entries else "No saved scans yet. Each scan is saved here automatically."]
+        if not enabled:
+            parts.append("Saving new scans is turned off in Settings.")
+        if self.history.recovery_message:
+            parts.append(self.history.recovery_message)
+        self.history_note.setText(" ".join(parts))
+        self._history_selection_changed()
+
+    def _selected_scan_id(self) -> "int | None":
+        rows = self.history_table.selectionModel().selectedRows() if self.history_table.selectionModel() else []
+        if not rows:
+            return None
+        return self.history_table.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+
+    def _history_selection_changed(self) -> None:
+        has = self._selected_scan_id() is not None
+        self.load_button.setEnabled(has)
+        self.delete_scan_button.setEnabled(has)
+
+    def _on_open_scan(self) -> None:
+        scan_id = self._selected_scan_id()
+        if scan_id is not None:
+            self._history_msg("")
+            self.load_requested.emit(scan_id)
+
+    def _on_delete_scan(self) -> None:
+        scan_id = self._selected_scan_id()
+        if scan_id is None or self.history is None:
+            return
+        if not self.confirm("Delete saved scan", "Delete this saved scan permanently? Reports you saved are not affected."):
+            self._history_msg("Nothing was deleted.")
+            return
+        try:
+            self.history.delete([scan_id])
+            self._history_msg("The saved scan was deleted.", "Success")
+        except HistoryError as exc:
+            self._history_msg(f"Could not delete the saved scan: {exc}", "Error")
+        self.refresh_history()
 
     # -- data from the main window ------------------------------------------------------------------------
     def set_scan(self, result: ScanResult) -> None:
@@ -615,17 +753,14 @@ class AboutPage(QWidget):
         lay.addWidget(EmptyState(f"{APP_NAME} {__version__}", info, "Development build"), 1)
 
 
-def build_pages() -> list[tuple[str, QWidget]]:
+def build_pages(settings_store: SettingsStore | None = None,
+                history: HistoryStore | None = None) -> list[tuple[str, QWidget]]:
     return [
         ("Dashboard", DashboardPage()),
         ("Hardware", HardwarePage()),
         ("Network", NetworkPage()),
         ("Port Analyzer", PortsPage()),
-        ("Reports", ReportsPage()),
-        ("Settings", PlaceholderPage(
-            "Settings", "Theme, report preferences, important ports and data retention.",
-            "Settings not available yet",
-            "Settings arrive in Module 8. Use the theme button in the sidebar for now.",
-            "Coming in Module 8")),
+        ("Reports", ReportsPage(settings_store, history)),
+        ("Settings", SettingsPage(settings_store or SettingsStore(), history or HistoryStore())),
         ("About", AboutPage()),
     ]

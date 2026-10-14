@@ -74,7 +74,7 @@ def test_cancelled_dialog_is_calm_and_creates_nothing(qapp, tmp_path):
     qapp.processEvents()
     assert page.message.text() == "Save cancelled. No file was created."
     assert page.message.objectName() == "Muted" and page.save_button.isEnabled()
-    assert not page.open_pdf_button.isVisibleTo(page) and not list(tmp_path.iterdir())
+    assert not page.open_pdf_button.isVisibleTo(page) and not list(tmp_path.glob("*.pdf"))
 
 
 def test_save_errors_are_explained_and_the_app_keeps_working(qapp, tmp_path):

@@ -137,3 +137,21 @@ def test_ports_real_data():
     assert all(f.value.startswith(ST_UDP) for f in secs["ports_udp"].fields if f.status is Status.OK)
     assert any("(PID " in f.value for f in tcp), "no listener could be mapped to a process"
 
+
+
+# ---- Module 8: the real per-user data folder on this PC ----
+def test_data_folder_is_per_user_and_writable(tmp_path, monkeypatch):
+    from pcinsight.core.history import HistoryStore
+    from pcinsight.core.paths import data_dir
+    from pcinsight.core.settings import SettingsStore
+    monkeypatch.delenv("PCINSIGHT_DATA_DIR", raising=False)     # use the real location rules
+    folder = data_dir()
+    print("\nPCInsight data folder:", folder)
+    assert folder.name == "PCInsight" and os.environ["APPDATA"] in str(folder)
+    # exercise the real SQLite and JSON code on this PC, in a temporary folder (not your real data)
+    from helpers import sample_with_ports
+    h = HistoryStore(tmp_path / "h.sqlite3")
+    sid = h.save(sample_with_ports())
+    assert h.load(sid) == sample_with_ports()
+    s = SettingsStore(tmp_path / "s.json")
+    assert s.update(theme="dark") and SettingsStore(tmp_path / "s.json").settings.theme == "dark"

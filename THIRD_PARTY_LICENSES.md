@@ -8,4 +8,5 @@
 | charset-normalizer (ReportLab dependency) | text encoding | MIT | |
 | DejaVu Sans fonts (bundled, src/pcinsight/assets/fonts) | report text | Bitstream Vera licence + public-domain DejaVu changes | Explicitly allows selling as part of a larger package; the licence text ships in assets/fonts/LICENSE_DEJAVU.txt and must be kept. Fonts may not be sold by themselves or modified under the Vera/Bitstream names. |
 | pypdf (dev only) | tests read the generated PDFs | BSD-3-Clause | Not shipped. |
+| sqlite3 (Python standard library) | scan history | SQLite is public domain | Part of Python itself. |
 | pytest (dev only) | tests | MIT | Not shipped. |

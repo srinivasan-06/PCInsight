@@ -49,3 +49,10 @@ Launch; click all 7 items; resize/maximize; toggle theme; confirm no console err
 - test_report_end_to_end.py: real scan -> real PDF (any OS).
 ## Module 7 on your PC
 - test.bat, then Reports page: save a report, open it, compare with the Hardware/Network/Port pages; try cancelling, saving to a read-only folder, and overwriting a report that is open in a PDF viewer.
+
+## Module 8 automated
+- test_paths.py, test_settings.py (defaults, round trip, per-value validation, damaged/empty/binary/BOM files, unreadable file, save failures, port-list parsing), test_serialization.py (exact round trip, damaged and newer payloads), test_history.py (save/list/load, retention by age/count/both, delete, delete-all compaction, secure delete, damaged DB set aside, newer DB refused, single damaged scan, locked DB, folder in place of file, 150 scans), test_diagnostics.py (enable/disable/duplicate/delete while on, no addresses in the log).
+- test_ui_settings.py: every control persists and applies; invalid ports refused with reasons; retention trims immediately; confirmations; logging toggle and failure; reset; save failure; damaged settings at startup.
+- test_ui_history.py: scans listed newest first, survive restart, retention after scan/at startup, open a saved scan (not live, not re-saved), report from a saved scan, delete with confirmation, damaged scan, history failures never spoil a scan, damaged/unavailable history file at startup.
+## Module 8 on your PC
+- test.bat, then try: change theme and restart; apply a port list and rescan; scan three times and open an old scan from Reports; set a low retention; delete all saved scans; turn the log on, open the log folder, delete the log; damage nothing on purpose.

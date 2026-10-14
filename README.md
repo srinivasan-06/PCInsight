@@ -2,7 +2,7 @@
 
 Windows desktop app to inspect hardware, OS, network configuration and local listening ports, and export a PDF report. Everything stays local; no internet is needed for scanning.
 
-**Status:** Modules 1-7 implemented. Press "Scan now" to read computer name, Windows edition/version/build, architecture, manufacturer/model, uptime, plus CPU, motherboard, BIOS, memory, graphics, storage and network configuration. Network connectivity tests are optional and start only when you press a button. Listening and ports arrive in later modules.
+**Status:** Modules 1-8 implemented. Press "Scan now" to read computer name, Windows edition/version/build, architecture, manufacturer/model, uptime, plus CPU, motherboard, BIOS, memory, graphics, storage and network configuration. Network connectivity tests are optional and start only when you press a button. Listening and ports arrive in later modules.
 
 ## Requirements
 - Windows 10/11, Python 3.10, 3.11 or 3.12 (64-bit; all three are tested) from https://www.python.org/downloads/ (tick "Add python.exe to PATH")
@@ -48,3 +48,10 @@ python -m pytest tests/test_system_integration.py -s
 
 ## PDF reports
 Reports page -> choose what to include and the paper size -> "Save PDF report...". The PDF has the product name, scan time, system, hardware, network and port results, a warnings/unavailable table, and a limitations section, with a header, footer and "Page X of Y" on every page. It is built offline, saved only where you choose (written to a temporary file first, so a failure never damages an existing report), and never uploaded. Only values from the scan appear: anything missing is stated as missing.
+
+## Settings, scan history and your data
+- **Settings page** (all changes save automatically): theme, report preferences (paper size, what to include), the important-port list, scan-history options (on/off, how long, how many), the optional diagnostic log, and version information. "Reset all settings" restores defaults.
+- **Scan history**: every scan is saved locally (SQLite) so you can reopen it from **Reports > Saved scans** and make a report from it. A reopened scan is clearly marked "not live" and is not saved again. Old scans are removed automatically by your retention limits; "Delete all saved scans" wipes them (deleted data is overwritten and the file is compacted).
+- **Where files live**: `%APPDATA%\PCInsight\` (`settings.json`, `history.sqlite3`, `logs\`). Settings > "Open data folder" opens it. To keep everything elsewhere (for example on a USB stick) set the environment variable `PCINSIGHT_DATA_DIR`.
+- **Damaged files never block the app**: a damaged settings file or history database is renamed (`...damaged-<time>`) and defaults / an empty history are used; the app tells you.
+- **Privacy**: nothing is uploaded. The diagnostic log is off by default and is designed not to record IP addresses, MAC addresses or device names.

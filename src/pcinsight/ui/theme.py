@@ -62,6 +62,11 @@ QPushButton#Ghost:disabled {{ color: {t['muted']}; }}
 QLineEdit#Search {{ background: {t['surface']}; color: {t['text']}; border: 1px solid {t['border']};
     border-radius: 6px; padding: 7px 10px; }}
 QLineEdit#Search:focus {{ border: 1px solid {t['accent']}; }}
+QTableWidget {{ background: {t['surface']}; color: {t['text']}; gridline-color: {t['border']};
+    border: 1px solid {t['border']}; border-radius: 6px; selection-background-color: {t['accent']};
+    selection-color: {t['accent_text']}; }}
+QHeaderView::section {{ background: {t['badge_bg']}; color: {t['text']}; padding: 6px 8px; border: none;
+    border-right: 1px solid {t['border']}; font-weight: 600; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; }}
 QScrollBar::handle:vertical {{ background: {t['border']}; border-radius: 5px; min-height: 30px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}

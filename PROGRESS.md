@@ -5,26 +5,28 @@
 - [x] Module 4: Memory, GPU, storage (confirmed on Windows)
 - [x] Module 5: Network configuration (v2 confirmed on Windows)
 - [x] Module 6: Local listening-port analyzer - delivered; user reported bugs, DEFERRED to the final debug pass (details not yet received)
-- [x] Module 7: Professional PDF reports - code complete; 302+ tests pass on Python 3.10, 3.11 and 3.12
-- [ ] Module 7: tried on your Windows PC  <-- awaiting user (bugs may be batched into the final debug pass)
-- [ ] Modules 8-10, then the final debug pass for everything
+- [x] Module 7: PDF reports - delivered; user wants bugs batched into the final debug pass
+- [x] Module 8: Settings and scan history - code complete; 429 tests pass on Python 3.10, 3.11 and 3.12
+- [ ] Module 8: tried on your Windows PC  <-- awaiting user
+- [ ] Modules 9-10, then the final debug pass for everything (Modules 6, 7, 8 findings)
 
-## Module 7 decisions
-- ReportLab (BSD) + bundled DejaVu Sans (licence allows sale inside a larger package). Characters the font lacks (CJK, Kannada...) become "?" and the report says how many were replaced.
-- Report engine is separate from scanning (report/ package knows only a finished ScanResult).
-- Sections: cover + at-a-glance, system, hardware, network (+ separate connectivity block), ports, warnings/unavailable table, limitations. Header, footer and "Page X of Y" on every page; tables wrap (long unbroken names split), header rows repeat across pages.
-- Never fabricated: missing sections say "was not collected"; missing values say Unavailable / Reported as empty / Not exposed by Windows; scan errors and replaced characters are listed in the warnings table.
-- Saving: user picks the path (Qt save dialog); written to a temp file then moved into place; cancelled dialog = calm message; permission/locked file, missing folder, folder-as-file, invalid/too-long name, disk full, build failure are all explained; existing files are never damaged.
-- Report options (paper size, include network/ports/connectivity) are on the Reports page now; Module 8 will persist them as report preferences.
-- Setup scripts added: setup.bat, run.bat, test.bat (test.bat saves test-output.txt and integration-output.txt).
-- Test fixes found along the way: end-to-end test was wrongly inside the Windows-only file (moved); writer did not handle a folder chosen as a file name or a too-long name (fixed).
+## Module 8 decisions
+- Settings: JSON in %APPDATA%\PCInsight, saved atomically on every change; invalid values are replaced one by one; a damaged file is renamed and defaults used (user is told). A save failure keeps the change active for the session and says so.
+- History: SQLite (standard library), one compressed JSON snapshot per scan, secure_delete on, VACUUM after "delete all". Retention by age and count, applied after every scan, at startup and when the limits change. Default ON (local only, easy to turn off and delete). A damaged database is set aside; a newer-version database is refused without being touched; a damaged single scan can be deleted without affecting the others; a locked/failed history never spoils a scan.
+- A reopened scan is marked "not live", is not re-saved, and can be used for a report.
+- Important ports come from Settings at the moment a scan starts. Report defaults come from Settings; Reports page choices apply to one report only.
+- Diagnostic log: off by default, rotating file, can be opened/deleted from Settings, released before deletion (Windows file locks). Tested that scan failures do not put addresses in the log.
+- Tests are isolated: PCINSIGHT_DATA_DIR points every test at a temporary folder, so no test can touch real settings/history.
+- UI polish found while checking screenshots: saved-scan list column cut-off and missing dark-theme styling (both fixed).
 
 ## Ideas parked for later
+- Compare two saved scans (what changed).
 - Optional redaction of IP/MAC addresses in reports.
-- PyInstaller must bundle assets/fonts (package-data is already declared).
+- PyInstaller must bundle assets/fonts (package-data already declared).
 
 ## Known limitations
 - Real-PC behaviour is only proven where you run the tests.
+- Connectivity results are not stored in the history (only scans).
+- Settings changed in two PCInsight windows at once: the last write wins.
 - Report text uses DejaVu Sans: no CJK/Indic scripts (replaced with "?").
-- Reports are not encrypted or password-protected.
-- Sidebar icons, persisted theme / important-port list / report preferences (Module 8).
+- Sidebar icons.
