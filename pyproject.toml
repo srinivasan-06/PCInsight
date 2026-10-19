@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 dependencies = ["PySide6>=6.6", "psutil>=5.9", "reportlab>=4.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pypdf>=4.0"]
+dev = ["pytest>=8.0", "pypdf>=4.0", "pytest-cov>=5.0"]
 
 [project.gui-scripts]
 pcinsight = "pcinsight.app:main"
@@ -23,3 +23,7 @@ pcinsight = ["assets/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: runs the REAL collectors on the real Windows PC it is started on (never uses mocked data)",
+]

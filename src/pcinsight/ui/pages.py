@@ -356,10 +356,12 @@ class PortsPage(SectionsPage):
     def show_result(self, result: ScanResult) -> None:
         sections = [(x.key, x.title, x.fields, x.note) for x in result.ports_sections()]
         errors = [e for e in result.errors if e.startswith("Listening ports")]
+        header = f"Collected {format_timestamp(result.scanned_at)}  \u00b7  this computer only"
         if not sections:
-            return
-        self.render([f"Collected {format_timestamp(result.scanned_at)}  \u00b7  this computer only"],
-                    sections, errors, PORTS_LEGEND)
+            # Never leave the previous scan's ports on screen under a newer scan (they could be out of date, or the
+            # collector may have failed this time). Say plainly that this scan has no port data.
+            header = f"No port data was collected in the scan from {format_timestamp(result.scanned_at)}."
+        self.render([header], sections, errors, PORTS_LEGEND)
 
 
 class NetworkPage(SectionsPage):

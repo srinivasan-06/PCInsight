@@ -2,7 +2,7 @@
 
 Windows desktop app to inspect hardware, OS, network configuration and local listening ports, and export a PDF report. Everything stays local; no internet is needed for scanning.
 
-**Status:** Modules 1-8 implemented. Press "Scan now" to read computer name, Windows edition/version/build, architecture, manufacturer/model, uptime, plus CPU, motherboard, BIOS, memory, graphics, storage and network configuration. Network connectivity tests are optional and start only when you press a button. Listening and ports arrive in later modules.
+**Status:** Modules 1-9 implemented. Press "Scan now" to read computer name, Windows edition/version/build, architecture, manufacturer/model, uptime, plus CPU, motherboard, BIOS, memory, graphics, storage and network configuration. Network connectivity tests are optional and start only when you press a button. Listening and ports arrive in later modules.
 
 ## Requirements
 - Windows 10/11, Python 3.10, 3.11 or 3.12 (64-bit; all three are tested) from https://www.python.org/downloads/ (tick "Add python.exe to PATH")
@@ -10,7 +10,7 @@ Windows desktop app to inspect hardware, OS, network configuration and local lis
 ## Quick start (three double-clicks)
 1. **setup.bat** - creates the environment and installs everything (run once, and again after each update).
 2. **run.bat** - starts PCInsight.
-3. **test.bat** - runs all tests and saves `test-output.txt` and `integration-output.txt` (send these if something fails).
+3. **test.bat** - runs the mocked tests, then the real-computer tests (see TESTING.md), and saves `test-output.txt` and `integration-output.txt` (send these if something fails).
 
 The scripts avoid PowerShell's script-permission prompt. If you prefer typing the commands yourself (PowerShell, inside the project folder):
 ```powershell

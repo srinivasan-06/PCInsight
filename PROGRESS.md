@@ -8,7 +8,9 @@
 - [x] Module 7: PDF reports - delivered; user wants bugs batched into the final debug pass
 - [x] Module 8: Settings and scan history - code complete; 429 tests pass on Python 3.10, 3.11 and 3.12
 - [ ] Module 8: tried on your Windows PC  <-- awaiting user
-- [ ] Modules 9-10, then the final debug pass for everything (Modules 6, 7, 8 findings)
+- [x] Module 9: tests and reliability - 603 mocked tests pass (95% line+branch coverage); 17 new real-hardware integration tests written but NOT yet run on Windows
+- [ ] Module 9: integration tests run on your Windows PC  <-- awaiting user (test.bat part 2, normal and as administrator)
+- [ ] Module 10, then the final debug pass for everything (Modules 6, 7, 8 findings)
 
 ## Module 8 decisions
 - Settings: JSON in %APPDATA%\PCInsight, saved atomically on every change; invalid values are replaced one by one; a damaged file is renamed and defaults used (user is told). A save failure keeps the change active for the session and says so.

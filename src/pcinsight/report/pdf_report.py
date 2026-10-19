@@ -62,6 +62,9 @@ class ReportOptions:
         return LETTER if self.paper.lower() == "letter" else A4
 
 
+MAX_TEXT_CHARS = 2000   # real Windows device names are at most a few hundred characters
+
+
 class _NumberedCanvas(canvas.Canvas):
     """Two-pass canvas so every page can print 'Page X of Y'."""
 
@@ -137,7 +140,11 @@ class _ReportBuilder:
     # -- text helpers ---------------------------------------------------------------------------------
     def para(self, text: object, style: str = "body") -> Paragraph:
         """XML-escape (so names like 'A&B <x>' print literally), sanitise, keep line breaks."""
-        t = escape(self.san.clean(text)).replace("\n", "<br/>")
+        clean = self.san.clean(text)
+        if len(clean) > MAX_TEXT_CHARS:      # far beyond any real device name; one cell taller than a page cannot be laid out
+            clean = (clean[:MAX_TEXT_CHARS] +
+                     f" [\u2026 {len(clean) - MAX_TEXT_CHARS:,} more characters are not shown in this report]")
+        t = escape(clean).replace("\n", "<br/>")
         return Paragraph(t, self.st[style])
 
     def value_cell(self, f: InfoField, network_or_ports: bool):

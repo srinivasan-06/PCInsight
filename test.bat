@@ -2,17 +2,27 @@
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" goto nosetup
 call ".venv\Scripts\activate.bat"
-echo Running the automated tests ...
-python -m pytest > test-output.txt 2>&1
+echo.
+echo ============================================================
+echo  PART 1 - automated tests with MOCKED system data
+echo  (shows PCInsight handles problems correctly; does NOT prove
+echo   hardware detection works on this or any other PC)
+echo ============================================================
+python -m pytest -m "not integration" > test-output.txt 2>&1
 type test-output.txt
 echo.
-echo Running the real-computer checks (reads this PC; sends a few harmless network probes) ...
-python -m pytest tests\test_system_integration.py -s > integration-output.txt 2>&1
+echo ============================================================
+echo  PART 2 - REAL-COMPUTER integration tests (this PC only)
+echo  Reads this PC and sends a few harmless network probes.
+echo  Tip: run this once normally and once "as administrator"
+echo  to see how permissions change what can be read.
+echo ============================================================
+python -m pytest -m integration -s -rs > integration-output.txt 2>&1
 type integration-output.txt
 echo.
 echo ------------------------------------------------------------
 echo Results were also saved next to this file:
-echo   test-output.txt         (automated tests)
+echo   test-output.txt         (mocked automated tests)
 echo   integration-output.txt  (what PCInsight found on this PC)
 echo Send me those two files if anything failed.
 pause

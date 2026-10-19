@@ -171,6 +171,15 @@ def make_field(key: str, label: str, default_source: str, fn: Callable[[], Readi
     return InfoField(key, label, r.value.strip(), Status.OK, r.source, r.note)
 
 
+def as_collection_error(exc: Exception) -> CollectionError:
+    """Turn any exception into a CollectionError that is safe to show. The text of an unexpected exception can
+    contain paths, names or addresses, so only its type is logged and nothing of it is shown."""
+    if isinstance(exc, CollectionError):
+        return exc
+    logger.warning("Unexpected %s while reading system data", type(exc).__name__)
+    return CollectionError("Unexpected error while reading this value")
+
+
 def reg_str(read: Callable[[str, str], object], path: str, name: str) -> str:
     value = read(path, name)
     if value is None:

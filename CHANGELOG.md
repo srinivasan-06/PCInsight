@@ -1,5 +1,6 @@
 # Changelog
 ## 0.1.0 - Unreleased
+- Module 9: testing and reliability. Cross-collector failure-contract tests, workflow/shutdown/repeated-scan tests, separate Windows-only real-hardware integration tests (`-m integration`), honest end-of-run summary, TESTING.md. Fixes found by the new tests: stale ports shown after a failed scan; memory/GPU/storage sections lost to any unexpected error; null character in a report file name; a single huge value could stop the whole PDF.
 - Module 8: settings (theme, report preferences, important ports, retention, diagnostic logging), local scan history in SQLite with reopen/delete/retention, data-folder handling.
 - Module 7: PDF reports (ReportLab, bundled DejaVu fonts), safe saving, Reports page; setup.bat / run.bat / test.bat.
 - Module 6: local listening-port analyzer (TCP listeners, UDP endpoints, process mapping, important-port list), Port Analyzer page and dashboard card.

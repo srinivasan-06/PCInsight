@@ -31,6 +31,8 @@ def write_report(path: str, result: ScanResult, connectivity: ConnectivityResult
         raise ReportError("No save location was chosen.")
     chosen = Path(path.strip())
     try:
+        if "\x00" in path:       # no file system accepts this; open() would fail with a ValueError
+            raise ValueError("embedded null character")
         if chosen.is_dir():     # check the path as chosen, before any '.pdf' is added
             raise ReportError("That location is a folder. Please choose a file name for the report.")
         target = chosen if chosen.suffix.lower() == ".pdf" else chosen.with_name(chosen.name + ".pdf")

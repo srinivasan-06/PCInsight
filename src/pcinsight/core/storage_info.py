@@ -5,7 +5,7 @@ Free space says nothing about disk health, and PCInsight keeps the two separate.
 """
 from __future__ import annotations
 
-from .common import CollectionError, Reading, clean_value, format_bytes, make_field, to_int
+from .common import CollectionError, Reading, as_collection_error, clean_value, format_bytes, make_field, to_int
 from .device_sources import DeviceSources, default_device_sources
 from .models import InfoSection
 
@@ -45,13 +45,14 @@ def _disk_sections(s: DeviceSources, now) -> list[InfoSection]:
     rows, fallback, primary_err = [], False, None
     try:
         rows = s.powershell_json(PHYSICAL_DISK_SCRIPT)
-    except CollectionError as exc:
-        primary_err = exc
+    except Exception as exc:  # noqa: BLE001 - boundary
+        primary_err = as_collection_error(exc)
     if not rows:
         try:
             rows = s.cim_all("Win32_DiskDrive", ["Model", "Size", "InterfaceType"])
             fallback = True
-        except CollectionError as fb_err:
+        except Exception as fb_exc:  # noqa: BLE001 - boundary
+            fb_err = as_collection_error(fb_exc)
             reason = (f"Get-PhysicalDisk: {primary_err}. " if primary_err else "Get-PhysicalDisk returned no disks. ")
             msg = f"{reason}Win32_DiskDrive: {fb_err}."
             return [InfoSection("storage", "Storage devices", [

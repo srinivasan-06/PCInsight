@@ -1,7 +1,7 @@
 """Module 4a: memory (RAM) collector. Serial numbers are deliberately NOT collected."""
 from __future__ import annotations
 
-from .common import CollectionError, Reading, format_bytes, make_field, placeholder_note, to_int
+from .common import CollectionError, Reading, as_collection_error, format_bytes, make_field, placeholder_note, to_int
 from .device_sources import DeviceSources, default_device_sources
 from .models import InfoSection
 
@@ -51,8 +51,8 @@ def collect_memory(sources: DeviceSources | None = None) -> list[InfoSection]:
     modules, modules_err = None, None
     try:
         modules = s.cim_all("Win32_PhysicalMemory", MODULE_FIELDS)
-    except CollectionError as exc:
-        modules_err = exc
+    except Exception as exc:  # noqa: BLE001 - boundary: one bad query must not remove the whole section
+        modules_err = as_collection_error(exc)
 
     def modules_or_raise() -> list[dict[str, str]]:
         if modules is None:

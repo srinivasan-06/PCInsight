@@ -1,7 +1,7 @@
 """Module 4b: graphics adapter collector."""
 from __future__ import annotations
 
-from .common import CollectionError, Reading, format_bytes, make_field, normalize_date, to_int
+from .common import CollectionError, Reading, as_collection_error, format_bytes, make_field, normalize_date, to_int
 from .device_sources import DeviceSources, default_device_sources
 from .models import InfoSection
 
@@ -72,8 +72,8 @@ def collect_gpus(sources: DeviceSources | None = None) -> list[InfoSection]:
     try:
         rows = s.cim_all("Win32_VideoController", GPU_FIELDS)
         err = None if rows else CollectionError("Windows reported no graphics adapters")
-    except CollectionError as exc:
-        rows, err = [], exc
+    except Exception as exc:  # noqa: BLE001 - boundary: one bad query must not remove the whole section
+        rows, err = [], as_collection_error(exc)
     if err is not None:
         return [InfoSection("gpu", "Graphics", [
             make_field("gpus", "Graphics adapters", SRC_VC, lambda: _fail(str(err)))], now, GPU_NOTE)]

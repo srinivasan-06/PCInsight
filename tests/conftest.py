@@ -42,3 +42,41 @@ def _isolated_data_dir(tmp_path, monkeypatch):
     yield
     from pcinsight.core.diagnostics import configure_logging
     configure_logging(False, None)     # release any log file handle before the folder is removed
+
+
+# ---- Module 9: keep "mocked tests passed" and "real hardware was checked" strictly apart -------------------------
+_integration = {"passed": 0, "failed": 0, "skipped": 0}
+
+
+def pytest_collection_modifyitems(items):
+    """Every test in a *integration* file is marked, so `-m integration` / `-m "not integration"` always work."""
+    for item in items:
+        if "integration" in item.path.name:
+            item.add_marker(pytest.mark.integration)
+
+
+def pytest_runtest_logreport(report):
+    if "integration" not in report.keywords:
+        return
+    if report.when == "call":
+        _integration["passed" if report.passed else "failed"] += 1
+    elif report.when == "setup" and report.skipped:
+        _integration["skipped"] += 1
+    elif report.when == "setup" and report.failed:
+        _integration["failed"] += 1
+
+
+def pytest_terminal_summary(terminalreporter):
+    tr, i = terminalreporter, _integration
+    tr.write_sep("=", "what this result does and does not prove")
+    if i["passed"] == 0:
+        tr.write_line("REAL-HARDWARE INTEGRATION TESTS DID NOT RUN (or none passed).", yellow=True, bold=True)
+        tr.write_line("Every passing test above used MOCKED system data. That shows PCInsight handles the answers it was "
+                      "given; it is NOT evidence that hardware detection works on this or any other PC.")
+        tr.write_line('To check real hardware, run on Windows:  python -m pytest -m integration -s -rs   (or test.bat)')
+    else:
+        tr.write_line(f"Real-hardware integration tests: {i['passed']} passed, {i['failed']} failed, "
+                      f"{i['skipped']} skipped - on THIS PC, THIS Windows install and THIS user's permissions only.",
+                      bold=True)
+        tr.write_line("This is not proof for other PCs. Repeat on each hardware / Windows / permission combination "
+                      "you need to support (see TESTING.md).")
